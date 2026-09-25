@@ -182,11 +182,11 @@ runs `scripts/setup_local_db.py`. Everything is safe to run again.
    backend\.venv\Scripts\python scripts\setup_local_db.py --admin-url postgresql://postgres:YOUR_PASSWORD@localhost:5432/postgres --seed
    ```
 
-   This gives you the API and the website on Windows. **The background worker (RQ) does not
-   run on native Windows** (it needs `fork`), so uploads stay "Uploaded" until a worker runs.
-   The worker opens the file path the API saved, so the API and the worker must run on the
-   same side. To process uploads on Windows either run the whole backend (API + worker)
-   inside WSL 2 with the Linux steps above (`bash scripts/setup_local.sh`), or use Docker.
+   This gives you the API and the website on Windows. The background worker (RQ) does not
+   run on native Windows (it needs `fork`), so `.env` has `INGEST_INLINE=true` (the setup
+   script sets it on Windows): the API then processes each upload itself, one at a time, with
+   the same code the worker runs. No Redis is needed. For heavy use, run the full stack in
+   Docker or the backend in WSL 2 instead.
 
 ### What `scripts/setup_local_db.py` does (any OS)
 

@@ -41,6 +41,8 @@ LOCAL_VALUES = {
     "LLM_BASE_URL": "http://localhost:11434",
     "STORAGE_DIR": "./storage",
     "NEXT_PUBLIC_API_URL": "http://localhost:8000",
+    # RQ cannot run on Windows (no fork), so there the API processes uploads itself.
+    "INGEST_INLINE": "true" if sys.platform == "win32" else "false",
 }
 
 VECTOR_HELP = {
