@@ -549,6 +549,21 @@ export function draftBriefingNote(
 }
 
 /** Download an authenticated file (e.g. a DOCX export) and hand it to the browser to save. */
+/** The filename the server asked for, falling back to ours if it did not say. */
+function serverFilename(res: Response, fallback: string): string {
+  const disposition = res.headers.get("content-disposition") ?? "";
+  const encoded = /filename\*=UTF-8''([^;]+)/i.exec(disposition);
+  if (encoded) {
+    try {
+      return decodeURIComponent(encoded[1]);
+    } catch {
+      // malformed encoding: fall through to the plain form
+    }
+  }
+  const plain = /filename="([^"]+)"/i.exec(disposition) ?? /filename=([^;]+)/i.exec(disposition);
+  return plain ? plain[1].trim() : fallback;
+}
+
 export async function downloadFile(path: string, filename: string, retry = true): Promise<void> {
   const headers = new Headers();
   const token = read(ACCESS);
@@ -564,12 +579,14 @@ export async function downloadFile(path: string, filename: string, retry = true)
   const url = URL.createObjectURL(await res.blob());
   const a = document.createElement("a");
   a.href = url;
-  a.download = filename;
+  a.download = serverFilename(res, filename);
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
-export function exportReport(id: string, format: "docx" | "pdf", prefix = "pq-reply"): Promise<void> {
+// The server names the file after the report's own type; `prefix` is only the fallback
+// for when Content-Disposition cannot be read.
+export function exportReport(id: string, format: "docx" | "pdf", prefix = "report"): Promise<void> {
   return downloadFile(`/reports/${id}/export?format=${format}`, `${prefix}-${id.slice(0, 8)}.${format}`);
 }
 

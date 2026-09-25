@@ -772,3 +772,17 @@ def test_export_is_scoped_to_the_users_unit(client_as):
     hq = SimpleNamespace(org_unit=SimpleNamespace(code="CIL_HQ"), org_unit_id=uuid.uuid4())
     where = export_statement(rid, hq).whereclause.compile(dialect=postgresql.dialect())
     assert "org_unit_id" not in str(where)  # CIL HQ sees every unit
+
+
+def test_only_an_approved_report_becomes_exported():
+    """Exporting a draft is a preview; it must not look like the end of the workflow."""
+    from app.api.pq_replies import status_after_export
+
+    assert status_after_export(ReportStatus.APPROVED) is ReportStatus.EXPORTED
+    for unchanged in (
+        ReportStatus.DRAFT,
+        ReportStatus.IN_REVIEW,
+        ReportStatus.RETURNED,
+        ReportStatus.EXPORTED,
+    ):
+        assert status_after_export(unchanged) is unchanged

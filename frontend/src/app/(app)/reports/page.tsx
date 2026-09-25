@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
 import { useMe } from "@/components/AppShell";
-import { ApiError, createReport, listReports, type ReportRow, type ReportStatus, type ReportType } from "@/lib/api";
+import { ApiError, createReport, exportReport, listReports, type ReportRow, type ReportStatus, type ReportType } from "@/lib/api";
 import { type LabelKey, useT } from "@/lib/i18n";
 
 const REPORT_TYPES: ReportType[] = ["pq_reply", "monthly", "briefing"];
@@ -25,6 +25,7 @@ export default function ReportsPage() {
     me.permissions.includes("approve_reports") ||
     me.permissions.includes("export_reports");
   const canCreate = me.permissions.includes("edit_reports");
+  const canExport = me.permissions.includes("export_reports");
 
   const [reports, setReports] = useState<ReportRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -44,6 +45,21 @@ export default function ReportsPage() {
   useEffect(() => {
     if (canView) load();
   }, [canView, load]);
+
+  // A Viewer holds only export_reports, so without this the list is read-only for them.
+  const [exportingId, setExportingId] = useState<string | null>(null);
+  async function doExport(id: string) {
+    setExportingId(id);
+    setError(null);
+    try {
+      await exportReport(id, "docx");
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : String(err));
+    } finally {
+      setExportingId(null);
+    }
+  }
 
   const [showCreate, setShowCreate] = useState(false);
   const [newType, setNewType] = useState<ReportType>("briefing");
@@ -151,6 +167,7 @@ export default function ReportsPage() {
                 <th className="px-4 py-2 font-medium">{t("status")}</th>
                 <th className="px-4 py-2 font-medium">{t("dueDate")}</th>
                 <th className="px-4 py-2 font-medium">{t("uploadedOn")}</th>
+                {canExport && <th className="px-4 py-2 font-medium">{t("report.export")}</th>}
               </tr>
             </thead>
             <tbody>
@@ -171,6 +188,17 @@ export default function ReportsPage() {
                   <td className="px-4 py-2 whitespace-nowrap">
                     {new Date(r.created_at).toLocaleString("en-IN")}
                   </td>
+                  {canExport && (
+                    <td className="px-4 py-2 whitespace-nowrap">
+                      <button
+                        onClick={() => doExport(r.id)}
+                        disabled={exportingId !== null}
+                        className="text-xs text-brand underline disabled:text-gray-400 disabled:no-underline"
+                      >
+                        {exportingId === r.id ? t("report.exporting") : t("report.exportDocx")}
+                      </button>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
