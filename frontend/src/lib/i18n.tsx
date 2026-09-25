@@ -92,6 +92,21 @@ const en = {
   changePasswordButton: "Change password",
   changingPassword: "Changing…",
   passwordChanged: "Password changed. Please log in again.",
+  auditLog: "Audit log",
+  auditWho: "Who",
+  auditAction: "Action",
+  auditWhat: "What it was done to",
+  auditWhen: "When",
+  auditIp: "IP",
+  auditFilterAction: "Action",
+  auditFilterUser: "Person's email contains",
+  auditFilterFrom: "From date",
+  auditFilterTo: "To date",
+  auditAllActions: "All actions",
+  auditClearFilters: "Clear filters",
+  auditNoResults: "No matching audit entries.",
+  auditSystem: "System",
+  auditDetails: "Details",
 };
 
 export type LabelKey = keyof typeof en;
@@ -145,6 +160,13 @@ const hi: Partial<Record<LabelKey, string>> = {
   confirmNewPassword: "नए पासवर्ड की पुष्टि करें",
   changePasswordButton: "पासवर्ड बदलें",
   changingPassword: "बदल रहा है…",
+  auditLog: "ऑडिट लॉग",
+  auditWho: "किसने",
+  auditAction: "कार्रवाई",
+  auditWhen: "कब",
+  auditAllActions: "सभी कार्रवाइयाँ",
+  auditClearFilters: "फ़िल्टर हटाएं",
+  auditNoResults: "कोई मेल खाती प्रविष्टि नहीं मिली।",
 };
 
 export type Lang = "en" | "hi";

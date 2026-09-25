@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import auth, documents, qa
+from app.api import audit, auth, documents, qa
 from app.core.config import get_settings
 
 app = FastAPI(
@@ -21,6 +21,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(documents.router)
 app.include_router(qa.router)
+app.include_router(audit.router)
 
 
 @app.get("/health", tags=["system"])
