@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
 import { useMe } from "@/components/AppShell";
+import ConfirmDialog from "@/components/ConfirmDialog";
 import {
   ApiError,
   approveReport,
@@ -31,6 +32,7 @@ const EDITABLE_STATUSES: ReportStatus[] = ["DRAFT", "RETURNED"];
 
 export default function ReportDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const router = useRouter();
   const me = useMe();
   const { t } = useT();
   const canView =
@@ -44,6 +46,8 @@ export default function ReportDetailPage() {
   const [versions, setVersions] = useState<ReportVersionRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [text, setText] = useState("");
+  // What the server currently holds. Anything else in the textarea is unsaved.
+  const [savedText, setSavedText] = useState("");
 
   const load = useCallback(
     () =>
@@ -52,6 +56,7 @@ export default function ReportDetailPage() {
           setReport(r);
           setVersions(v);
           setText(r.content_json.text ?? "");
+          setSavedText(r.content_json.text ?? "");
           setError(null);
         },
         (e: unknown) => setError(e instanceof ApiError ? e.message : String(e)),
@@ -73,6 +78,7 @@ export default function ReportDetailPage() {
     setActionError(null);
     try {
       await updateReport(id, { content_json: { text } });
+      setSavedText(text);
       setSaved(true);
       await load();
     } catch (err) {
@@ -83,12 +89,16 @@ export default function ReportDetailPage() {
   }
 
   const [submitting, setSubmitting] = useState(false);
+  const [confirmSubmit, setConfirmSubmit] = useState(false);
+  const [confirmLeave, setConfirmLeave] = useState(false);
   async function doSubmit() {
+    setConfirmSubmit(false);
     setSubmitting(true);
     setActionError(null);
     try {
       await updateReport(id, { content_json: { text } });
       await submitReport(id);
+      setSavedText(text);
       await load();
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : String(err));
@@ -129,6 +139,15 @@ export default function ReportDetailPage() {
     }
   }
 
+  const dirty = text !== savedText;
+
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
+
   if (!canView) return <p className="text-gray-600">{t("noPermission")}</p>;
   if (error) return <p className="rounded border border-red-300 bg-red-50 p-3 text-red-800">{error}</p>;
   if (!report) return <p className="text-gray-500">{t("loading")}</p>;
@@ -137,7 +156,16 @@ export default function ReportDetailPage() {
 
   return (
     <div className="space-y-4">
-      <Link href="/reports" className="text-sm text-brand underline">
+      <Link
+        href="/reports"
+        onClick={(e) => {
+          if (dirty) {
+            e.preventDefault();
+            setConfirmLeave(true);
+          }
+        }}
+        className="text-sm text-brand underline"
+      >
         ← {t("backToReports")}
       </Link>
 
@@ -182,13 +210,17 @@ export default function ReportDetailPage() {
               {saving ? t("saving") : t("saveDraft")}
             </button>
             <button
-              onClick={doSubmit}
+              onClick={() => setConfirmSubmit(true)}
               disabled={submitting}
               className="rounded bg-brand px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
             >
               {submitting ? t("submitting") : t("submitForApproval")}
             </button>
-            {saved && <span className="text-sm text-green-700">{t("savedDraft")}</span>}
+            {dirty ? (
+              <span className="text-sm text-amber-700">{t("editor.unsavedChanges")}</span>
+            ) : (
+              saved && <span className="text-sm text-green-700">{t("savedDraft")}</span>
+            )}
           </div>
         )}
 
@@ -243,6 +275,28 @@ export default function ReportDetailPage() {
           ))}
         </ul>
       </div>
+
+      {confirmSubmit && (
+        <ConfirmDialog
+          title={t("editor.submitConfirm")}
+          body={t("editor.submitConfirmBody")}
+          confirmLabel={t("submitForApproval")}
+          busy={submitting}
+          onConfirm={doSubmit}
+          onCancel={() => setConfirmSubmit(false)}
+        />
+      )}
+
+      {confirmLeave && (
+        <ConfirmDialog
+          title={t("editor.leaveWithoutSaving")}
+          body={t("editor.leaveWithoutSavingBody")}
+          confirmLabel={t("editor.leaveAnyway")}
+          danger
+          onConfirm={() => router.push("/reports")}
+          onCancel={() => setConfirmLeave(false)}
+        />
+      )}
     </div>
   );
 }

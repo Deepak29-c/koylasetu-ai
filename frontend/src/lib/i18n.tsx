@@ -282,6 +282,14 @@ const en = {
   "dash.shortcuts": "Shortcuts",
   "dash.loadFailed": "Could not load your summary.",
   "dash.tryAgain": "Try again",
+  "editor.unsavedChanges": "Unsaved changes",
+  "editor.leaveWithoutSaving": "Leave without saving?",
+  "editor.leaveWithoutSavingBody": "The changes you have typed have not been saved. If you leave now they will be lost.",
+  "editor.leaveAnyway": "Leave without saving",
+  "editor.submitConfirm": "Submit this report for approval?",
+  "editor.submitConfirmBody": "It goes to an Approver and you will not be able to edit it again unless they return it to you.",
+  "users.deactivateConfirm": "Deactivate this account?",
+  "users.deactivateConfirmBody": "They will not be able to log in. You can reactivate the account later.",
 };
 
 export type LabelKey = keyof typeof en;
@@ -442,6 +450,14 @@ const hi: Partial<Record<LabelKey, string>> = {
   "dash.shortcuts": "शॉर्टकट",
   "dash.loadFailed": "आपका सारांश लोड नहीं हो सका।",
   "dash.tryAgain": "फिर से प्रयास करें",
+  "editor.unsavedChanges": "असहेजे बदलाव",
+  "editor.leaveWithoutSaving": "बिना सहेजे छोड़ें?",
+  "editor.leaveWithoutSavingBody": "आपने जो बदलाव लिखे हैं वे सहेजे नहीं गए हैं। अभी छोड़ने पर वे खो जाएंगे।",
+  "editor.leaveAnyway": "बिना सहेजे छोड़ें",
+  "editor.submitConfirm": "इस रिपोर्ट को अनुमोदन हेतु भेजें?",
+  "editor.submitConfirmBody": "यह अनुमोदक के पास चली जाएगी और जब तक वे इसे वापस नहीं भेजते, आप इसे दोबारा संपादित नहीं कर पाएंगे।",
+  "users.deactivateConfirm": "इस खाते को निष्क्रिय करें?",
+  "users.deactivateConfirmBody": "वे लॉग इन नहीं कर पाएंगे। आप बाद में खाता फिर सक्रिय कर सकते हैं।",
 };
 
 export type Lang = "en" | "hi";
