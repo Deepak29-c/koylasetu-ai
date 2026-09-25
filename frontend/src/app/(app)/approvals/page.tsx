@@ -109,7 +109,7 @@ export default function ApprovalsPage() {
       )}
 
       {items && items.length > 0 && (
-        <ul className="grid gap-4 md:grid-cols-2">
+        <ul className="grid max-h-[70vh] gap-4 overflow-y-auto scroll-quiet p-0.5 md:grid-cols-2">
           {items.map(({ report: r, submittedBy }) => (
             <li key={r.id}>
               <Card as="article" className="flex h-full flex-col gap-4">

@@ -112,7 +112,7 @@ export default function SimilarQuestions({ text, exclude = null, limit = 5, newT
     );
   } else {
     body = (
-      <ul aria-label={t("similar.title")} className={cn("space-y-3", refreshing && "opacity-70")}>
+      <ul aria-label={t("similar.title")} className={cn("max-h-[60vh] overflow-y-auto scroll-quiet space-y-3", refreshing && "opacity-70")}>
         {found.items.map((item) => (
           <SimilarItem key={item.report_id ?? item.chunk_id ?? item.title} item={item} newTab={newTab} />
         ))}

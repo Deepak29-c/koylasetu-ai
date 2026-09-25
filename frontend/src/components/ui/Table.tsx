@@ -1,6 +1,14 @@
 "use client";
 
-import { ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight, Search, X } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
+  ChevronLeft,
+  ChevronRight,
+  Search,
+  X,
+} from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { cn } from "@/lib/cn";
@@ -11,9 +19,20 @@ import { useT } from "@/lib/i18n";
  * dividers, no column rules. Wrap in <TableFrame> for the white card and horizontal scroll.
  */
 
-export function TableFrame({ className, children }: { className?: string; children: React.ReactNode }) {
+export function TableFrame({
+  className,
+  children,
+}: {
+  className?: string;
+  children: React.ReactNode;
+}) {
   return (
-    <div className={cn("ks-card overflow-hidden rounded-card border border-line bg-surface shadow-card", className)}>
+    <div
+      className={cn(
+        "ks-card overflow-hidden rounded-card border border-line bg-surface shadow-card",
+        className,
+      )}
+    >
       {children}
     </div>
   );
@@ -29,12 +48,21 @@ export function Table({
   /** Read by screen readers; not shown. */
   caption?: string;
   children: React.ReactNode;
-  /** Bounded scroll so the header stays in view on long tables. */
+  /** Bounded scroll so the header stays in view on long tables. "none" lets it grow. */
   maxHeight?: string;
 }) {
+  const limit = maxHeight ?? "min(62vh, 640px)";
   return (
-    <div className="ks-grow overflow-auto px-3 pb-2" style={maxHeight ? { maxHeight } : undefined}>
-      <table className={cn("w-full border-separate border-spacing-0 text-left text-sm", className)}>
+    <div
+      className="ks-grow scroll-quiet overflow-auto px-3 pb-2"
+      style={limit === "none" ? undefined : { maxHeight: limit }}
+    >
+      <table
+        className={cn(
+          "w-full border-separate border-spacing-0 text-left text-sm",
+          className,
+        )}
+      >
         {caption && <caption className="sr-only">{caption}</caption>}
         {children}
       </table>
@@ -60,13 +88,30 @@ type THProps = React.ThHTMLAttributes<HTMLTableCellElement> & {
   align?: "left" | "right" | "center";
 };
 
-export function TH({ sort, align = "left", className, children, ...rest }: THProps) {
+export function TH({
+  sort,
+  align = "left",
+  className,
+  children,
+  ...rest
+}: THProps) {
   const { t } = useT();
-  const alignClass = align === "right" ? "text-right" : align === "center" ? "text-center" : "text-left";
+  const alignClass =
+    align === "right"
+      ? "text-right"
+      : align === "center"
+        ? "text-center"
+        : "text-left";
   return (
     <th
       scope="col"
-      aria-sort={sort?.active ? (sort.dir === "asc" ? "ascending" : "descending") : undefined}
+      aria-sort={
+        sort?.active
+          ? sort.dir === "asc"
+            ? "ascending"
+            : "descending"
+          : undefined
+      }
       className={cn(
         "h-10 px-3.5 text-xs font-semibold whitespace-nowrap text-muted first:pl-5 last:pr-5",
         alignClass,
@@ -94,7 +139,11 @@ export function TH({ sort, align = "left", className, children, ...rest }: THPro
           ) : (
             <ArrowUpDown size={12} aria-hidden className="opacity-50" />
           )}
-          {sort.active && <span className="sr-only">{sort.dir === "asc" ? t("ui.sortAsc") : t("ui.sortDesc")}</span>}
+          {sort.active && (
+            <span className="sr-only">
+              {sort.dir === "asc" ? t("ui.sortAsc") : t("ui.sortDesc")}
+            </span>
+          )}
         </button>
       ) : (
         children
@@ -103,7 +152,11 @@ export function TH({ sort, align = "left", className, children, ...rest }: THPro
   );
 }
 
-export function TR({ className, selected, ...rest }: React.HTMLAttributes<HTMLTableRowElement> & { selected?: boolean }) {
+export function TR({
+  className,
+  selected,
+  ...rest
+}: React.HTMLAttributes<HTMLTableRowElement> & { selected?: boolean }) {
   return (
     <tr
       className={cn(
@@ -120,7 +173,9 @@ export function TD({
   className,
   align = "left",
   ...rest
-}: React.TdHTMLAttributes<HTMLTableCellElement> & { align?: "left" | "right" | "center" }) {
+}: React.TdHTMLAttributes<HTMLTableCellElement> & {
+  align?: "left" | "right" | "center";
+}) {
   return (
     <td
       className={cn(
@@ -154,10 +209,17 @@ export function TableToolbar({
 }) {
   const { t } = useT();
   return (
-    <div className={cn("flex flex-wrap items-center gap-3 px-5 pt-4 pb-3", className)}>
+    <div
+      className={cn(
+        "flex flex-wrap items-center gap-3 px-5 pt-4 pb-3",
+        className,
+      )}
+    >
       {(title || count !== undefined) && (
         <div className="mr-auto flex items-baseline gap-2">
-          {title && <h2 className="text-base font-semibold text-strong">{title}</h2>}
+          {title && (
+            <h2 className="text-base font-semibold text-strong">{title}</h2>
+          )}
           {count !== undefined && (
             <span className="text-xs text-subtle" aria-live="polite">
               ({t("ui.showing")}: {count}
@@ -189,7 +251,11 @@ export function SearchInput({
   const { t } = useT();
   return (
     <div className={cn("relative w-full sm:w-64", className)}>
-      <Search size={15} aria-hidden className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-subtle" />
+      <Search
+        size={15}
+        aria-hidden
+        className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-subtle"
+      />
       <input
         type="search"
         value={value}
@@ -279,7 +345,10 @@ export function useSort<T, K extends string>(
       if (x === y) return 0;
       if (x === null || x === undefined) return 1;
       if (y === null || y === undefined) return -1;
-      const c = typeof x === "number" && typeof y === "number" ? x - y : String(x).localeCompare(String(y));
+      const c =
+        typeof x === "number" && typeof y === "number"
+          ? x - y
+          : String(x).localeCompare(String(y));
       return sort.dir === "asc" ? c : -c;
     });
     return out;
@@ -290,7 +359,11 @@ export function useSort<T, K extends string>(
     active: sort.key === key,
     dir: sort.dir,
     onClick: () =>
-      setSort((s) => (s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" })),
+      setSort((s) =>
+        s.key === key
+          ? { key, dir: s.dir === "asc" ? "desc" : "asc" }
+          : { key, dir: "asc" },
+      ),
   });
   return { sorted, sort, header };
 }

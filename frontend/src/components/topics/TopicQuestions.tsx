@@ -26,7 +26,7 @@ export default function TopicQuestions({ questions, word }: TopicQuestionsProps)
 
   return (
     <div className="space-y-3">
-      <ul className="divide-y divide-line">
+      <ul className="max-h-[60vh] overflow-y-auto scroll-quiet divide-y divide-line">
         {shown.map((q) => {
           const meta = [
             t(`house.${q.house}` as LabelKey),

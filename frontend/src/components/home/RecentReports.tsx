@@ -85,7 +85,7 @@ export default function RecentReports() {
         </EmptyState>
       )}
       {rows && rows.length > 0 && (
-        <ul className="divide-y divide-line">
+        <ul className="max-h-[60vh] overflow-y-auto scroll-quiet divide-y divide-line">
           {rows.map((r) => (
             <li key={r.id} className="flex flex-wrap items-center gap-x-4 gap-y-1.5 py-3 first:pt-0 last:pb-0">
               <div className="min-w-0 flex-1">

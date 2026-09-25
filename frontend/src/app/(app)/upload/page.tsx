@@ -172,7 +172,7 @@ export default function UploadPage() {
                   {t("docs.removeAll")}
                 </Button>
               </div>
-              <ul className="divide-y divide-line rounded-panel border border-line">
+              <ul className="max-h-[50vh] divide-y divide-line overflow-y-auto scroll-quiet rounded-panel border border-line">
                 {files.map((f) => {
                   const issue = fileIssue(f);
                   return (
@@ -323,7 +323,7 @@ export default function UploadPage() {
               </ButtonLink>
             }
           />
-          <ul className="divide-y divide-line rounded-panel border border-line">
+          <ul className="max-h-[50vh] divide-y divide-line overflow-y-auto scroll-quiet rounded-panel border border-line">
             {results.map((r, i) => (
               <li key={`${r.filename}-${i}`} className="flex flex-wrap items-start gap-3 px-4 py-3">
                 <FileTypeIcon name={r.filename} className="mt-0.5 shrink-0 text-brand" />
