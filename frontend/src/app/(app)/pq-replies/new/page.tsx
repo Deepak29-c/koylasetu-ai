@@ -5,7 +5,9 @@ import { useRef, useState } from "react";
 
 import { useMe } from "@/components/AppShell";
 import DraftProgress from "@/components/drafts/DraftProgress";
+import PartsPreview from "@/components/drafts/PartsPreview";
 import PqDraftView from "@/components/drafts/PqDraftView";
+import { QuestionImportButton, QuestionImportNotices, useQuestionImport } from "@/components/drafts/QuestionImport";
 import { useDraftRequest } from "@/components/drafts/useDraftRequest";
 import Alert from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
@@ -24,6 +26,7 @@ const EMPTY: PqDraftIn = {
   mp_name: "",
   subject: "",
   question_text: "",
+  due_date: "",
 };
 
 const MIN_QUESTION = 10;
@@ -35,6 +38,7 @@ export default function NewPqReplyPage() {
   const [questionError, setQuestionError] = useState<string | null>(null);
   const job = useDraftRequest<PqDraftOut>();
   const questionRef = useRef<HTMLTextAreaElement>(null);
+  const questionImport = useQuestionImport(form.question_text, (text) => set("question_text", text));
 
   const header = (
     <PageHeader
@@ -73,6 +77,7 @@ export default function NewPqReplyPage() {
           answer_date: form.answer_date || null,
           mp_name: form.mp_name || null,
           subject: form.subject || null,
+          due_date: form.due_date || null,
         },
         key,
       ),
@@ -127,6 +132,9 @@ export default function NewPqReplyPage() {
                   onChange={(e) => set("answer_date", e.target.value)}
                 />
               </Field>
+              <Field label={t("pqform.dueDate")} hint={t("pqform.dueDateHint")} optional>
+                <Input type="date" value={form.due_date ?? ""} onChange={(e) => set("due_date", e.target.value)} />
+              </Field>
               <Field label={t("mpName")} optional>
                 <Input value={form.mp_name ?? ""} maxLength={300} onChange={(e) => set("mp_name", e.target.value)} />
               </Field>
@@ -137,7 +145,12 @@ export default function NewPqReplyPage() {
           </Card>
 
           <Card>
-            <CardHeader title={t("questionText")} icon={<MessageSquareText />} />
+            <CardHeader
+              title={t("questionText")}
+              icon={<MessageSquareText />}
+              actions={<QuestionImportButton busy={questionImport.busy} onChoose={(f) => void questionImport.choose(f)} />}
+            />
+            <QuestionImportNotices state={questionImport} />
             <Field
               label={t("questionText")}
               hideLabel
@@ -155,6 +168,7 @@ export default function NewPqReplyPage() {
                 className="min-h-56"
               />
             </Field>
+            <PartsPreview text={form.question_text} />
           </Card>
 
           <div className="flex flex-wrap items-center gap-3 xl:col-span-2">
