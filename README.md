@@ -24,6 +24,30 @@ The full technical spec is [docs/KoylaSetu_AI_Developer_Guide.docx](docs/KoylaSe
 
 Built so far:
 
+**Monthly report and briefing note first drafts** (guide 10.1, W5/W6), "New monthly report"
+and "New briefing note" screens:
+- `POST /reports/monthly/draft {month: "2024-12", subsidiaries?}` (Analyst / Approver): one
+  table each for coal production (subsidiary, target, actual, % achievement, same month last
+  year, growth %), despatch and coking coal, rows ECL…NEC, CIL, SCCL, Captive/Others, All
+  India. Every figure is copied by code from the facts table (`value_std`, MT) and the %s are
+  computed by code; VERIFIED facts win, REJECTED ones are never used, unverified figures are
+  marked `*`, and a figure that is not found is `–` (never estimated). Summary lines are
+  written by code; only the remarks come from the local model, from the table rows alone, and
+  a remark whose figure is not in the row it cites is dropped and listed. If the model is
+  down the remarks are written by rule (changes of 5% or more) with a warning
+- `POST /reports/briefing/draft {topic, from?, to?}`: key figures (latest month and FY in
+  range, with the year before and change %) and a trend table picked from the facts by the
+  metric / subsidiary words in the topic; key points and recent steps from `qa.ask` with the
+  same keep-only-sourced-figures rule as PQ replies. The model is checked first (503)
+- Facts are org-scoped through their document (own unit + public documents). Sources are
+  numbered by document page (S1…); every fact / chunk used is a `report_citations` row
+- Both are ordinary DRAFT reports in the reports list / editor / approval flow, and export
+  through `GET /reports/{id}/export` with bar charts drawn by PyMuPDF (no Matplotlib); a
+  draft saved from the plain-text editor keeps its tables, charts (redrawn from the edited
+  tables) and sources. `Idempotency-Key` works as for PQ replies
+- Fact extraction: a "Monthly Target" / "Annual Target" column without its own period now
+  takes the table's month (or its FY), so monthly targets can be found
+
 **PQ reply first draft** (guide 10.1-10.2), "New PQ reply" screen:
 - `POST /pq-replies/draft` (Analyst / Approver): paste house, question no., date, MP, subject
   and question text; it is saved as a `parliament_questions` row and split into parts on

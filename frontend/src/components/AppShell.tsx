@@ -45,6 +45,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     ...(me?.permissions.includes("manage_admin") ? [{ href: "/admin/users", label: t("users") }] : []),
     ...(canSeeReports ? [{ href: "/reports", label: t("reports") }] : []),
     ...(me?.permissions.includes("edit_reports") ? [{ href: "/pq-replies/new", label: t("newPqReply") }] : []),
+    ...(me?.permissions.includes("edit_reports")
+      ? [
+          { href: "/monthly-reports/new", label: t("newMonthlyReport") },
+          { href: "/briefing-notes/new", label: t("newBriefingNote") },
+        ]
+      : []),
   ];
 
   return (
