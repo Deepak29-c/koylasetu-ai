@@ -173,9 +173,13 @@ python scripts/load_sources.py --api http://localhost:8000      # all downloaded
 python scripts/load_sources.py --doc-type coal_inventory --dry-run
 ```
 
-It prints `created / duplicate / rejected / missing file / error` per file and in total. Safe to
-re-run: the API recognises files it already has by sha256 and reports them as duplicates.
-Password: `--password`, else `KOYLA_PASSWORD`, else `SEED_DEMO_PASSWORD`, else the seed default.
+It prints `created / duplicate / rejected / missing file / error` per file and in total, and
+exits 1 if any upload failed, the API cannot be reached, or nothing was loaded because the
+files were never downloaded. Safe to re-run: the API recognises files it already has by sha256
+and reports them as duplicates. A duplicate is not changed: it keeps the visibility (public or
+not), title and metadata of its first upload.
+Password: set `KOYLA_PASSWORD` (keeps it out of shell history); `--password` also works, then
+`SEED_DEMO_PASSWORD`, else the seed default.
 
 ## Checks
 

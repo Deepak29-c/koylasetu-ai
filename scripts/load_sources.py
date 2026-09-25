@@ -131,6 +131,14 @@ def summary_line(counts: Counter) -> str:
 # --- Network parts --------------------------------------------------------------------------
 
 
+class ApiUnreachable(Exception):
+    """The API did not answer (down, restarting, connection reset or timed out)."""
+
+
+class LoginFailed(Exception):
+    """The API answered the login with something other than a token."""
+
+
 class Api:
     def __init__(self, base_url: str, email: str, password: str, timeout: int = 300) -> None:
         self.base_url = base_url.rstrip("/")
@@ -147,6 +155,9 @@ class Api:
                 return e.code, json.loads(body)
             except ValueError:
                 return e.code, body.decode("utf-8", "replace")[:300]
+        except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
+            reason = getattr(e, "reason", None) or e
+            raise ApiUnreachable(f"cannot reach API at {self.base_url}: {reason}") from None
 
     def login(self) -> None:
         payload = json.dumps({"email": self.email, "password": self.password}).encode()
@@ -157,8 +168,9 @@ class Api:
             method="POST",
         )
         code, body = self._send(req)
-        if code != 200 or not isinstance(body, dict):
-            raise SystemExit(f"Login as {self.email} failed ({code}): {body}")
+        if code != 200 or not isinstance(body, dict) or "access_token" not in body:
+            detail = body.get("detail") if isinstance(body, dict) else body
+            raise LoginFailed(f"login as {self.email} failed (HTTP {code}): {detail}")
         self.token = body["access_token"]
 
     def upload(self, fields: dict[str, str], path: Path) -> tuple[int, object]:
@@ -182,14 +194,65 @@ class Api:
         return code, body
 
 
+def load_rows(
+    rows: list[dict[str, str]], api: Api, public: bool = True, dry_run: bool = False
+) -> Counter:
+    """Upload each row and print its result. A file the API could not take (unreachable,
+    timed out, HTTP error) counts as `error` and the run goes on; if logging in again fails
+    mid-run, the rest of the rows are left and the summary is still printed."""
+    counts: Counter = Counter()
+    for i, row in enumerate(rows):
+        path = ROOT / row["file"]
+        fields = form_fields(row, public=public)
+        stop = False
+        if not path.is_file():
+            result, detail = "missing file", "run scripts/fetch_sources.py first"
+        elif dry_run:
+            result, detail = "dry run", json.dumps(fields)[:120]
+        else:
+            try:
+                code, body = api.upload(fields, path)
+            except ApiUnreachable as e:
+                result, detail = "error", str(e)
+            except LoginFailed as e:
+                result, detail, stop = "error", f"{e}; stopping", True
+            else:
+                if code == 200 and isinstance(body, list):
+                    result, detail = outcome(body)
+                else:
+                    detail = body.get("detail") if isinstance(body, dict) else body
+                    result, detail = "error", f"HTTP {code}: {detail}"
+        counts[result] += 1
+        print(f"  [{result:12}] {row.get('title', '')[:60]:60} {detail}")
+        if stop:
+            counts["not tried"] += len(rows) - i - 1
+            break
+    return counts
+
+
+def exit_code(counts: Counter) -> int:
+    """1 if anything failed, or if nothing was loaded because the files were never fetched."""
+    if counts["error"] or counts["rejected"] or counts["not tried"]:
+        return 1
+    if counts["missing file"] and not (counts["created"] or counts["duplicate"]):
+        return 1
+    return 0
+
+
 def main() -> int:
+    if hasattr(sys.stdout, "reconfigure"):  # Hindi titles on a cp1252 Windows console
+        try:
+            sys.stdout.reconfigure(errors="replace")
+        except (ValueError, OSError):
+            pass
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--api", default=os.environ.get("KOYLA_API", "http://localhost:8000"))
     parser.add_argument("--email", default=os.environ.get("KOYLA_EMAIL", "admin@koylasetu.local"))
     parser.add_argument(
         "--password",
         default=os.environ.get("KOYLA_PASSWORD") or os.environ.get("SEED_DEMO_PASSWORD"),
-        help="default: $KOYLA_PASSWORD, then $SEED_DEMO_PASSWORD, then the seed default",
+        help="prefer $KOYLA_PASSWORD (stays out of shell history); then $SEED_DEMO_PASSWORD, "
+        "then the seed default",
     )
     parser.add_argument("--sources", type=Path, default=SOURCES_CSV)
     parser.add_argument(
@@ -205,28 +268,17 @@ def main() -> int:
     print(f"{len(rows)} documents selected from {args.sources.name}")
     api = Api(args.api, args.email, args.password or "change-me-too")
     if not args.dry_run:
-        api.login()
+        try:
+            api.login()
+        except (ApiUnreachable, LoginFailed) as e:
+            print(str(e), file=sys.stderr)
+            return 1
 
-    counts: Counter = Counter()
-    for row in rows:
-        path = ROOT / row["file"]
-        fields = form_fields(row, public=not args.private)
-        if not path.is_file():
-            result, detail = "missing file", "run scripts/fetch_sources.py first"
-        elif args.dry_run:
-            result, detail = "dry run", json.dumps(fields)[:120]
-        else:
-            code, body = api.upload(fields, path)
-            if code == 200 and isinstance(body, list):
-                result, detail = outcome(body)
-            else:
-                detail = body.get("detail") if isinstance(body, dict) else body
-                result, detail = "error", f"HTTP {code}: {detail}"
-        counts[result] += 1
-        print(f"  [{result:12}] {row.get('title', '')[:60]:60} {detail}")
-
+    counts = load_rows(rows, api, public=not args.private, dry_run=args.dry_run)
     print(f"\nDone: {summary_line(counts)}.")
-    return 1 if counts["error"] or counts["rejected"] else 0
+    if counts["missing file"] and not (counts["created"] or counts["duplicate"]):
+        print("Nothing was loaded: download the files first with scripts/fetch_sources.py.")
+    return exit_code(counts)
 
 
 if __name__ == "__main__":

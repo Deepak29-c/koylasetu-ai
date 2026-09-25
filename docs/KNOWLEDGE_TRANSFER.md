@@ -48,8 +48,8 @@ frontend/src/
   lib/i18n.tsx   every UI string, English + Hindi, keyed by LabelKey — never inline strings in pages
 
 docs/SETUP.md    Docker-first setup guide (works, but skips the non-Docker path's real complexity — see section 6)
-data/sources.csv  100 real public documents catalogued (download: scripts/fetch_sources.py, upload: scripts/load_sources.py) — files themselves are git-ignored
-eval/pq_benchmark.jsonl   empty — benchmark format is documented in eval/run_eval.py's docstring, no real data yet
+data/sources.csv  100 real public files catalogued, 99 distinct (two PQ URLs serve the same file); download: scripts/fetch_sources.py, upload: scripts/load_sources.py — files themselves are git-ignored
+eval/pq_benchmark.jsonl   34 real Lok Sabha coal PQs with official answers and key figures (format checked by scripts/check_benchmark.py)
 ```
 
 ## 3. Architecture at a glance
@@ -90,8 +90,8 @@ eval/pq_benchmark.jsonl   empty — benchmark format is documented in eval/run_e
 - `worker/validate.py` — 4 lines, docstring only. No automatic checks run on extracted facts.
 - `worker/topics.py` — 1 line, docstring only.
 - Q&A numeric/SQL route — see above.
-- `data/` has 98 real documents catalogued in `sources.csv`, but confirm whether they've actually been uploaded into a running instance's database before assuming there's real content to query — the download script populates local files, it does not upload them through the API.
-- `eval/pq_benchmark.jsonl` — 0 lines. The runner (`eval/run_eval.py`) is also unbuilt (waits on the Q&A numeric route to mean anything).
+- `data/` has 100 files (99 distinct) catalogued in `sources.csv`. The download script only populates local files; load them into a running instance with `scripts/load_sources.py` before assuming there's real content to query.
+- `eval/pq_benchmark.jsonl` — 34 real PQs (see README "Benchmark set"). The runner (`eval/run_eval.py`) is also unbuilt (waits on the Q&A numeric route to mean anything).
 
 ## 7. Not started at all
 

@@ -6,8 +6,12 @@ downloaded document, the second reported each one as a duplicate.
 
 import csv
 import importlib.util
+import sys
+import urllib.error
 from collections import Counter
 from pathlib import Path
+
+import pytest
 
 from app.models.enums import DocType
 
@@ -129,3 +133,118 @@ def test_downloader_checks_the_file_signature():
     assert not fetcher.looks_like_document(b"<!DOCTYPE html><html>", "t.xlsx")
     assert not fetcher.looks_like_document(b"<!DOCTYPE html><html>", "p.csv")
     assert not fetcher.looks_like_document(b"<html>", "a.pdf")
+
+
+def test_csv_check_handles_bom_and_markup():
+    assert fetcher.looks_like_document(b"\xef\xbb\xbfyear,production\n2024,1047.5\n", "p.csv")
+    assert not fetcher.looks_like_document(b"\xef\xbb\xbf<!DOCTYPE html><html>", "p.csv")
+    assert not fetcher.looks_like_document(b'<?xml version="1.0"?><error/>', "p.csv")
+    assert not fetcher.looks_like_document(b"\n\n  <head><title>Blocked</title>", "p.csv")
+    assert not fetcher.looks_like_document(b"Request blocked <body>try later</body>", "p.csv")
+    assert not fetcher.looks_like_document(b"", "p.csv")
+
+
+# --- Failure handling: the API down, restarting or timing out mid-run ---------------------
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        urllib.error.URLError(ConnectionRefusedError(10061, "refused")),
+        TimeoutError("timed out"),
+        ConnectionResetError(10054, "reset"),
+    ],
+)
+def test_unreachable_api_is_a_clear_error(monkeypatch, error):
+    def boom(*_args, **_kwargs):
+        raise error
+
+    monkeypatch.setattr(loader.urllib.request, "urlopen", boom)
+    api = loader.Api("http://127.0.0.1:9/", "admin@koylasetu.local", "pw")
+    with pytest.raises(loader.ApiUnreachable, match=r"cannot reach API at http://127.0.0.1:9"):
+        api.login()
+
+
+def test_main_exits_1_with_one_line_when_api_is_down(monkeypatch, capsys):
+    def down(self):
+        raise loader.ApiUnreachable("cannot reach API at x")
+
+    monkeypatch.setattr(sys, "argv", ["load_sources.py", "--api", "http://127.0.0.1:9"])
+    monkeypatch.setattr(loader.Api, "login", down)
+    assert loader.main() == 1
+    assert capsys.readouterr().err.strip() == "cannot reach API at x"
+
+
+class FakeApi:
+    """Answers uploads from a script: one result tuple or exception per file."""
+
+    def __init__(self, script):
+        self.script = list(script)
+        self.calls = 0
+
+    def upload(self, fields, path):
+        self.calls += 1
+        step = self.script.pop(0)
+        if isinstance(step, Exception):
+            raise step
+        return step
+
+
+def _rows(tmp_path, monkeypatch, n):
+    monkeypatch.setattr(loader, "ROOT", tmp_path)
+    rows = []
+    for i in range(n):
+        (tmp_path / f"{i}.pdf").write_bytes(b"%PDF-1.7")
+        rows.append({"file": f"{i}.pdf", "title": f"Doc {i}", "doc_type": "pq_answer"})
+    return rows
+
+
+def test_one_unreachable_upload_does_not_stop_the_run(tmp_path, monkeypatch):
+    rows = _rows(tmp_path, monkeypatch, 3)
+    api = FakeApi(
+        [
+            (200, [{"result": "created", "document": {"id": "a"}}]),
+            loader.ApiUnreachable("cannot reach API at x: timed out"),
+            (200, [{"result": "duplicate", "document": None, "error": "seen"}]),
+        ]
+    )
+    counts = loader.load_rows(rows, api)
+    assert api.calls == 3
+    assert counts == Counter({"created": 1, "error": 1, "duplicate": 1})
+    assert loader.exit_code(counts) == 1
+
+
+def test_failed_relogin_stops_gracefully(tmp_path, monkeypatch, capsys):
+    rows = _rows(tmp_path, monkeypatch, 4)
+    api = FakeApi(
+        [
+            (200, [{"result": "created", "document": {"id": "a"}}]),
+            loader.LoginFailed("login as admin failed (HTTP 401): Wrong email or password"),
+        ]
+    )
+    counts = loader.load_rows(rows, api)
+    assert api.calls == 2  # nothing sent after the failed login
+    assert counts == Counter({"created": 1, "error": 1, "not tried": 2})
+    assert "stopping" in capsys.readouterr().out
+    assert "2 not tried" in loader.summary_line(counts)
+    assert loader.exit_code(counts) == 1
+
+
+def test_http_errors_are_counted(tmp_path, monkeypatch):
+    rows = _rows(tmp_path, monkeypatch, 1)
+    counts = loader.load_rows(rows, FakeApi([(403, {"detail": "Only CIL HQ ..."})]))
+    assert counts == Counter({"error": 1})
+
+
+def test_missing_files_are_not_sent(tmp_path, monkeypatch):
+    monkeypatch.setattr(loader, "ROOT", tmp_path)
+    api = FakeApi([])
+    counts = loader.load_rows([{"file": "nope.pdf", "title": "x"}], api)
+    assert api.calls == 0 and counts == Counter({"missing file": 1})
+
+
+def test_exit_code_when_nothing_was_fetched():
+    assert loader.exit_code(Counter({"missing file": 5})) == 1
+    assert loader.exit_code(Counter({"missing file": 5, "duplicate": 1})) == 0
+    assert loader.exit_code(Counter({"created": 2})) == 0
+    assert loader.exit_code(Counter({"dry run": 2})) == 0

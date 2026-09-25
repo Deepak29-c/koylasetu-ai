@@ -163,8 +163,9 @@ def looks_like_document(data: bytes, name: str) -> bool:
     """True if `data` has the signature its extension promises (CSV: text, not HTML)."""
     ext = Path(name).suffix.lower()
     if ext == ".csv":
-        head = data[:4096].lstrip().lower()
-        return b"\x00" not in head and not head.startswith((b"<!doctype", b"<html"))
+        head = data[:4096].removeprefix(b"\xef\xbb\xbf").lstrip().lower()
+        markup = (b"<!doctype", b"<?xml", b"<html", b"<head", b"<body")
+        return bool(head) and b"\x00" not in head and not any(m in head for m in markup)
     return data.startswith(MAGIC.get(ext, (b"%PDF-",)))
 
 
