@@ -25,11 +25,14 @@ openpyxl>=3.1
 xlrd>=2.0
 python-docx>=1.1
 
+# Topics / word cloud (guide 11): TF-IDF + NMF. Chosen over bertopic/keybert (torch, UMAP,
+# HDBSCAN: >1 GB) and wordcloud (C extension); the browser draws the cloud from JSON.
+scikit-learn>=1.5
+
 # Added when their module is built (kept out for now so the image stays small):
 #   W1 extras if Tesseract quality is not enough: paddleocr, opencv-python-headless, docling
 #   W3 Q&A: sqlglot
 #   W4 reports: docxtpl, matplotlib
-#   Topics: bertopic, keybert, wordcloud
 
 # Dev / test
 pytest>=8.3

@@ -149,7 +149,7 @@ def create_draft(
     audit.record(
         db,
         "create_pq_draft",
-        user_id=user.id,
+        actor=user,
         entity="report",
         entity_id=report.id,
         details={
@@ -233,7 +233,7 @@ def export_report(
     audit.record(
         db,
         "export_report",
-        user_id=user.id,
+        actor=user,
         entity="report",
         entity_id=report.id,
         details={"format": format, "status": report.status.value},

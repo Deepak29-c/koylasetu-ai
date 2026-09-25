@@ -22,3 +22,18 @@ def enqueue_ingest(document_id: uuid.UUID) -> bool:
     except RedisError:
         log.warning("Could not queue ingest job for %s: Redis unreachable", document_id)
         return False
+
+
+def enqueue_topics_refresh(force: bool = False) -> bool:
+    """Queue the topic job (guide 11): read new PQs from ingested PQ answers, then re-build
+    the topics if enough new questions arrived (or always, with force). False if Redis is
+    unreachable."""
+    try:
+        conn = Redis.from_url(get_settings().redis_url, socket_connect_timeout=2)
+        Queue("topics", connection=conn).enqueue(
+            "worker.topics.refresh_topics", force, job_timeout=1800
+        )
+        return True
+    except RedisError:
+        log.warning("Could not queue topics job: Redis unreachable")
+        return False

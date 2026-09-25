@@ -99,6 +99,22 @@ facts), built in step 3.
 - `GET /documents/{id}/facts`; `python -m worker.extract <document id>` rebuilds the facts
   of a document processed before this existed
 
+**Topic explorer** (guide 11, Module E), Topics screen:
+- Processed PQ answer documents (`pq_answer`) are read into `parliament_questions`: house,
+  starred/unstarred, number, answer date, subject, MPs, question and parts, parsed from the
+  text (tolerates OCR slips; Hindi headers understood)
+- Cleaning: English + Hindi (Devanagari) words, numbers/punctuation dropped, English, Hindi and
+  PQ-wording stopwords (ministry, whether, details, state-wise, coal, …)
+- Topics: TF-IDF over words and two-word phrases + NMF (scikit-learn), deterministic; label =
+  top keywords; counts per year and per session (Budget / Monsoon / Winter); a small Hindi →
+  English glossary lets Hindi questions join the English topic
+- Word cloud as JSON (drawn in the browser), filtered by house / years / session / subsidiary,
+  from questions and/or org-scoped document text, cached by filter
+- Worker job on the `topics` queue: queued after every processed PQ document, re-builds when
+  `TOPICS_MIN_NEW_PQS` (default 5) new questions arrived; admin "Re-run" button
+  (`POST /topics/refresh`); by hand `python -m worker.topics --force`
+- `GET /topics/wordcloud?house=LS&from=2019&to=2025`, `GET /topics`, `GET /topics/{id}/questions`
+
 **Benchmark set** (guide 15.2, issue #16): `eval/pq_benchmark.jsonl` holds 34 real Lok Sabha
 coal questions (2018-2022) with the official written answer, the key figures in it (183 in
 all: value, unit and, for figures from tables or easy to confuse, an optional `label`), a topic
@@ -110,6 +126,21 @@ checks the format `eval/run_eval.py` expects, the units, and that every expected
 in its official answer as a standalone number with the right sign. It does not check the unit
 or which cell was meant.
 
+**Benchmark runner** (guide 15.2, issue #11): with the API running and the demo users seeded,
+`backend/.venv/Scripts/python eval/run_eval.py` (options `--limit N`, `--ids a,b`,
+`--base-url`, `--timeout`, `--database-url` for automation %) logs in as the demo analyst,
+asks every benchmark question through `POST /qa/ask` and writes `eval/results/<date>/`:
+`report.md` and `summary.json` (numeric accuracy = expected figures found within 0.5% after
+unit conversion ÷ all expected figures, also per topic and per question; questions with every
+figure right; grounded %; not-found and error counts; latency p50/avg/max; figures in the
+answer that are not in the official answer), plus `results.json` and `citation_check.csv`
+(git-ignored: they hold text from our documents). Timeouts, 503s and other API errors are
+recorded and the run goes on. Citation correctness is a manual check: fill the `correct`
+column of `citation_check.csv` with Y/N, then `run_eval.py --rescore eval/results/<date>`;
+time saved comes from timed trials (`--time-trials`, CSV id, manual_seconds,
+assisted_seconds). Exact metric definitions: `scripts/benchmark_runner.py`. Real accuracy
+numbers need the local models pulled and the source documents loaded.
+
 **Setup (step 0):**
 - Docker Compose for all 6 services
 - All tables from guide section 6, plus the first Alembic migration
@@ -117,11 +148,13 @@ or which cell was meant.
 - RBAC matrix from guide 2.1, checked on every endpoint; org-unit scoping in queries
 - Document upload: file type checked by content, 100 MB limit, sha256 duplicate check, audit log, ingest job queued
 - Document list, detail and retry endpoints
+- Starter corpus: `scripts/load_sources.py` uploads every document in `data/sources.csv`
+  (optional `title` upload field, single file only, keeps the official title)
 - Frontend: login, home, upload (drag and drop, progress bar) and documents pages, with an English/Hindi toggle
 - Seed script with demo users for all 6 roles
 
 Not built yet: validation rules + review queue + NUMERIC route (rest of step 3), reports,
-topics, and the benchmark runner (`eval/run_eval.py`, #11). Tables on scanned pages are not detected yet (OCR gives text only).
+and the Metrics screen that shows the benchmark results. Tables on scanned pages are not detected yet (OCR gives text only).
 PaddleOCR (`OCR_ENGINE=paddle`) currently falls back to Tesseract.
 
 ## Run with Docker (the normal way)
@@ -183,8 +216,29 @@ python scripts/fetch_sources.py
 
 Files go to `data/raw/` (git-ignored). Each file is recorded in `data/sources.csv` with its
 official URL, publisher, download date and sha256. Safe to re-run: it skips files it already has.
-Current set: 5 key documents (CMPDI coal inventories, Monthly Coal Statistics, Ministry annual
-report chapter, one PQ answer) + 93 Lok Sabha PQ answers from the Ministry of Coal archive.
+Current set (100 files, 99 distinct: two PQ URLs serve the same file): 5 key documents (CMPDI
+coal inventories, Monthly Coal Statistics, Ministry annual report chapter, one PQ answer),
+2 CEA monthly coal statements for thermal power stations (.xls, National Power Portal) and
+93 Lok Sabha PQ answers from the Ministry of Coal archive, 9 of them scanned (no text layer,
+need OCR). If downloads fail with `CERTIFICATE_VERIFY_FAILED` because your network re-signs
+HTTPS, point `SSL_CERT_FILE` at that CA bundle; never turn verification off.
+
+Then load them into a running API (issue #15). Each file is uploaded through the normal
+upload endpoint with its doc type, FY, official title and source URL, marked public, so the
+default login is the demo admin (only CIL HQ / Ministry / Admin may mark documents public):
+
+```bash
+python scripts/load_sources.py --api http://localhost:8000      # all downloaded files
+python scripts/load_sources.py --doc-type coal_inventory --dry-run
+```
+
+It prints `created / duplicate / rejected / missing file / error` per file and in total, and
+exits 1 if any upload failed, the API cannot be reached, or nothing was loaded because the
+files were never downloaded. Safe to re-run: the API recognises files it already has by sha256
+and reports them as duplicates. A duplicate is not changed: it keeps the visibility (public or
+not), title and metadata of its first upload.
+Password: set `KOYLA_PASSWORD` (keeps it out of shell history); `--password` also works, then
+`SEED_DEMO_PASSWORD`, else the seed default.
 
 ## Checks
 
