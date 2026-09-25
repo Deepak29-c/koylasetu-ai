@@ -120,6 +120,8 @@ numbers need the local models pulled and the source documents loaded.
 - RBAC matrix from guide 2.1, checked on every endpoint; org-unit scoping in queries
 - Document upload: file type checked by content, 100 MB limit, sha256 duplicate check, audit log, ingest job queued
 - Document list, detail and retry endpoints
+- Starter corpus: `scripts/load_sources.py` uploads every document in `data/sources.csv`
+  (optional `title` upload field, single file only, keeps the official title)
 - Frontend: login, home, upload (drag and drop, progress bar) and documents pages, with an English/Hindi toggle
 - Seed script with demo users for all 6 roles
 
@@ -186,8 +188,29 @@ python scripts/fetch_sources.py
 
 Files go to `data/raw/` (git-ignored). Each file is recorded in `data/sources.csv` with its
 official URL, publisher, download date and sha256. Safe to re-run: it skips files it already has.
-Current set: 5 key documents (CMPDI coal inventories, Monthly Coal Statistics, Ministry annual
-report chapter, one PQ answer) + 93 Lok Sabha PQ answers from the Ministry of Coal archive.
+Current set (100 files, 99 distinct: two PQ URLs serve the same file): 5 key documents (CMPDI
+coal inventories, Monthly Coal Statistics, Ministry annual report chapter, one PQ answer),
+2 CEA monthly coal statements for thermal power stations (.xls, National Power Portal) and
+93 Lok Sabha PQ answers from the Ministry of Coal archive, 9 of them scanned (no text layer,
+need OCR). If downloads fail with `CERTIFICATE_VERIFY_FAILED` because your network re-signs
+HTTPS, point `SSL_CERT_FILE` at that CA bundle; never turn verification off.
+
+Then load them into a running API (issue #15). Each file is uploaded through the normal
+upload endpoint with its doc type, FY, official title and source URL, marked public, so the
+default login is the demo admin (only CIL HQ / Ministry / Admin may mark documents public):
+
+```bash
+python scripts/load_sources.py --api http://localhost:8000      # all downloaded files
+python scripts/load_sources.py --doc-type coal_inventory --dry-run
+```
+
+It prints `created / duplicate / rejected / missing file / error` per file and in total, and
+exits 1 if any upload failed, the API cannot be reached, or nothing was loaded because the
+files were never downloaded. Safe to re-run: the API recognises files it already has by sha256
+and reports them as duplicates. A duplicate is not changed: it keeps the visibility (public or
+not), title and metadata of its first upload.
+Password: set `KOYLA_PASSWORD` (keeps it out of shell history); `--password` also works, then
+`SEED_DEMO_PASSWORD`, else the seed default.
 
 ## Checks
 
