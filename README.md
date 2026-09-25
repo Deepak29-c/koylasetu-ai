@@ -21,8 +21,21 @@ The full technical spec is [docs/KoylaSetu_AI_Developer_Guide.docx](docs/KoylaSe
 
 ## Status
 
-Built so far (build step 0, setup):
+Built so far:
 
+**W1 ingestion pipeline** (guide 7.1 steps 1-9), runs in the worker:
+- PDF pages with a text layer: text blocks with position (bbox) + ruled tables, cells copied as text
+- Scanned pages and images (PNG/JPG/multi-page TIFF): Tesseract OCR, Hindi + English, with
+  per-page confidence; sideways pages (e.g. landscape charts) are detected and rotated
+- Excel/CSV: every sheet is a table; Word: paragraphs + tables
+- Text split into chunks of up to ~350 words that never cross a page, so every chunk can be
+  cited as (document, page) and highlighted
+- Embeddings (BGE-M3) via the local model server; if Ollama is not running, chunks are
+  saved without embeddings and keyword search still works
+- Live progress (pages done / total); retry re-runs any finished document
+- `GET /documents/{id}/pages/{n}` (chunks + tables with boxes) and `/pages/{n}/image`
+
+**Setup (step 0):**
 - Docker Compose for all 6 services
 - All tables from guide section 6, plus the first Alembic migration
 - Login with JWT access and refresh tokens (argon2 password hashing); `/me`
@@ -32,8 +45,8 @@ Built so far (build step 0, setup):
 - Frontend: login, home, upload (drag and drop, progress bar) and documents pages, with an English/Hindi toggle
 - Seed script with demo users for all 6 roles
 
-Not built yet: the ingestion pipeline (OCR, tables, facts), Q&A, review queue, reports, topics, and the benchmark.
-Uploads currently end as FAILED with "not built yet". That's expected.
+Not built yet: tables → facts + validation + review queue (step 3), Q&A (step 2), reports,
+topics, and the benchmark. PaddleOCR (`OCR_ENGINE=paddle`) currently falls back to Tesseract.
 
 ## Run with Docker (the normal way)
 
