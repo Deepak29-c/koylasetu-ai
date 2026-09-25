@@ -79,6 +79,8 @@ facts), built in step 3.
 - Document list, detail and retry endpoints
 - Frontend: login, home, upload (drag and drop, progress bar) and documents pages, with an English/Hindi toggle
 - Seed script with demo users for all 6 roles
+- Local model server (Ollama) without Docker: install notes per OS and `scripts/check_llm.py`,
+  which checks the local-only guard, both models, a 1024-number embedding and a test answer
 
 Not built yet: validation rules + review queue + NUMERIC route (rest of step 3), reports,
 topics, and the benchmark. Tables on scanned pages are not detected yet (OCR gives text only).
@@ -128,6 +130,12 @@ npm run dev
 **Windows note:** if Smart App Control blocks SQLAlchemy's compiled files ("An Application Control
 policy has blocked this file"), reinstall it as pure Python inside the venv:
 `DISABLE_SQLALCHEMY_CEXT=1 .venv/Scripts/pip install --force-reinstall --no-deps --no-binary sqlalchemy sqlalchemy`
+
+**Local AI model (Ollama) without Docker:** install Ollama from https://ollama.com, then
+`ollama pull bge-m3` and `ollama pull qwen2.5:3b-instruct` (~3 GB), set
+`LLM_BASE_URL=http://localhost:11434` in `.env`, and check everything with
+`cd backend && .venv/Scripts/python ../scripts/check_llm.py`. Per-OS install, disk/RAM notes
+and fixes: [docs/SETUP.md, section 10](docs/SETUP.md#10-local-ai-model-server-ollama-without-docker).
 
 ## Public source documents
 
