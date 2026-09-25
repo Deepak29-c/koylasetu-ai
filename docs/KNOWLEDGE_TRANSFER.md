@@ -91,7 +91,7 @@ eval/pq_benchmark.jsonl   34 real Lok Sabha coal PQs with official answers and k
 - `worker/topics.py` — 1 line, docstring only.
 - Q&A numeric/SQL route — see above.
 - `data/` has 100 files (99 distinct) catalogued in `sources.csv`. The download script only populates local files; load them into a running instance with `scripts/load_sources.py` before assuming there's real content to query.
-- `eval/pq_benchmark.jsonl` — 34 real PQs (see README "Benchmark set"). The runner (`eval/run_eval.py`) is also unbuilt (waits on the Q&A numeric route to mean anything).
+- `eval/pq_benchmark.jsonl` — 34 real PQs (see README "Benchmark set"). The runner is `eval/run_eval.py` (logic in `scripts/benchmark_runner.py`, PR #49).
 
 ## 7. Not started at all
 
