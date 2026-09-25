@@ -17,8 +17,9 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install -r requirements.txt
-      - run: ruff check .
-      - run: black --check .
+      # --config: ../scripts is outside backend/, so point it at our settings explicitly
+      - run: ruff check --config pyproject.toml . ../scripts
+      - run: black --check --config pyproject.toml . ../scripts
       - run: pytest -q
 
   frontend:

@@ -1,6 +1,8 @@
+import io
 import uuid
 from pathlib import Path
 
+import pymupdf
 from fastapi import (
     APIRouter,
     Depends,
@@ -9,9 +11,11 @@ from fastapi import (
     HTTPException,
     Query,
     Request,
+    Response,
     UploadFile,
     status,
 )
+from PIL import Image
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -19,9 +23,9 @@ from app.core.config import get_settings
 from app.core.db import get_db
 from app.core.deps import require, scope_to_user, sees_all_units
 from app.core.rbac import Permission, Role
-from app.models import Document, User
+from app.models import Chunk, Document, ExtractedTable, Page, User
 from app.models.enums import DocType, DocumentStatus
-from app.schemas.document import DocumentOut, UploadResult
+from app.schemas.document import ChunkOut, DocumentOut, PageOut, TableOut, UploadResult
 from app.services import audit, file_types, storage
 from app.services.normalise import normalise_fy
 from app.services.queue import enqueue_ingest
@@ -163,6 +167,86 @@ def get_document(
     return _get_scoped(db, document_id, user)
 
 
+def _page_size(doc: Document, page_no: int) -> tuple[float | None, float | None]:
+    path = Path(doc.file_path)
+    if doc.mime_type == "application/pdf":
+        with pymupdf.open(path) as pdf:
+            rect = pdf[page_no - 1].rect
+            return rect.width, rect.height
+    if doc.mime_type.startswith("image/"):
+        with Image.open(path) as img:
+            img.seek(page_no - 1)
+            return float(img.width), float(img.height)
+    return None, None
+
+
+@router.get("/{document_id}/pages/{page_no}", response_model=PageOut)
+def get_page(
+    document_id: uuid.UUID,
+    page_no: int,
+    user: User = Depends(require(Permission.ASK_QUESTIONS)),
+    db: Session = Depends(get_db),
+) -> PageOut:
+    """Page text chunks + tables with their boxes, for highlighting in the viewer."""
+    doc = _get_scoped(db, document_id, user)
+    page = db.scalar(select(Page).where(Page.document_id == doc.id, Page.page_no == page_no))
+    if page is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Page not processed")
+    chunks = db.scalars(
+        select(Chunk).where(Chunk.document_id == doc.id, Chunk.page_no == page_no)
+    ).all()
+    tables = db.scalars(
+        select(ExtractedTable).where(
+            ExtractedTable.document_id == doc.id, ExtractedTable.page_no == page_no
+        )
+    ).all()
+    width, height = _page_size(doc, page_no)
+    renderable = doc.mime_type == "application/pdf" or doc.mime_type.startswith("image/")
+    return PageOut(
+        document_id=doc.id,
+        page_no=page_no,
+        page_count=doc.page_count,
+        has_text_layer=page.has_text_layer,
+        ocr_used=page.ocr_used,
+        ocr_confidence=page.ocr_confidence,
+        width=width,
+        height=height,
+        image_url=f"/documents/{doc.id}/pages/{page_no}/image" if renderable else None,
+        chunks=[
+            ChunkOut(id=c.id, text=c.text, bbox=c.bbox, has_embedding=c.embedding is not None)
+            for c in chunks
+        ],
+        tables=[TableOut.model_validate(t) for t in tables],
+    )
+
+
+@router.get("/{document_id}/pages/{page_no}/image", response_class=Response)
+def get_page_image(
+    document_id: uuid.UUID,
+    page_no: int,
+    dpi: int = Query(110, ge=50, le=200),
+    user: User = Depends(require(Permission.ASK_QUESTIONS)),
+    db: Session = Depends(get_db),
+) -> Response:
+    """PNG of the page, rendered on demand from the original file."""
+    doc = _get_scoped(db, document_id, user)
+    if not doc.page_count or not 1 <= page_no <= doc.page_count:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such page")
+    path = Path(doc.file_path)
+    if doc.mime_type == "application/pdf":
+        with pymupdf.open(path) as pdf:
+            png = pdf[page_no - 1].get_pixmap(dpi=dpi).tobytes("png")
+    elif doc.mime_type.startswith("image/"):
+        with Image.open(path) as img:
+            img.seek(page_no - 1)
+            buf = io.BytesIO()
+            img.convert("RGB").save(buf, "PNG")
+            png = buf.getvalue()
+    else:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "This file type has no page images")
+    return Response(png, media_type="image/png", headers={"Cache-Control": "private, max-age=3600"})
+
+
 @router.post("/{document_id}/retry", response_model=UploadResult)
 def retry_document(
     document_id: uuid.UUID,
@@ -171,8 +255,10 @@ def retry_document(
     db: Session = Depends(get_db),
 ) -> UploadResult:
     doc = _get_scoped(db, document_id, user)
-    if doc.status not in (DocumentStatus.FAILED, DocumentStatus.UPLOADED):
-        raise HTTPException(status.HTTP_409_CONFLICT, f"Document is {doc.status}, not FAILED")
+    # Any finished document can be re-run (e.g. after an OCR improvement); the pipeline
+    # clears its earlier results first. Only a document being processed right now is blocked.
+    if doc.status == DocumentStatus.PROCESSING:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Document is being processed right now")
     doc.status, doc.error_message, doc.pages_done = DocumentStatus.UPLOADED, None, 0
     audit.record(db, "retry", user_id=user.id, entity="document", entity_id=doc.id, request=request)
     db.commit()
