@@ -42,9 +42,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     { href: "/upload", label: t("upload"), perm: "upload_documents" },
     { href: "/documents", label: t("documents"), perm: "view_processing" },
     { href: "/review", label: t("review"), perm: "review_facts" },
+    { href: "/topics", label: t("topics"), perm: "view_topics" },
     { href: "/audit", label: t("auditLog"), perm: "view_audit" },
     { href: "/admin/users", label: t("users"), perm: "manage_admin" },
     ...(canSeeReports ? [{ href: "/reports", label: t("reports") }] : []),
+    ...(me?.permissions.includes("edit_reports") ? [{ href: "/pq-replies/new", label: t("newPqReply") }] : []),
   ];
   const nav = items.filter((n) => !n.perm || me?.permissions.includes(n.perm));
 

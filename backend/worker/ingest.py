@@ -14,7 +14,8 @@ from sqlalchemy import delete
 
 from app.core.db import SessionLocal
 from app.models import Chunk, Document, ExtractedTable, Fact, Page
-from app.models.enums import DocumentStatus
+from app.models.enums import DocType, DocumentStatus
+from app.services.queue import enqueue_topics_refresh
 from worker import parse
 from worker.embed import embed_document, page_chunks
 from worker.extract import extract_table, llm_classifier
@@ -97,3 +98,5 @@ def run_pipeline(db, doc: Document) -> None:
         log.info("Document %s: %d chunks saved without embeddings", doc.id, total_chunks)
     doc.status = DocumentStatus.NEEDS_REVIEW if open_issues else DocumentStatus.PROCESSED
     db.commit()
+    if doc.doc_type == DocType.PQ_ANSWER:
+        enqueue_topics_refresh()  # adds the question to parliament_questions (guide 11)

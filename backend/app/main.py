@@ -1,7 +1,18 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import audit, auth, dashboard, documents, qa, reports, review, users
+from app.api import (
+    audit,
+    auth,
+    dashboard,
+    documents,
+    pq_replies,
+    qa,
+    reports,
+    review,
+    topics,
+    users,
+)
 from app.core.config import get_settings
 
 app = FastAPI(
@@ -25,6 +36,9 @@ app.include_router(review.router)
 app.include_router(audit.router)
 app.include_router(users.router)
 app.include_router(reports.router)
+app.include_router(pq_replies.router)
+app.include_router(pq_replies.export_router)
+app.include_router(topics.router)
 app.include_router(dashboard.router)
 
 

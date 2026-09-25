@@ -81,7 +81,31 @@ DOCUMENTS = [
         "fy": "",
         "notes": "Example PQ answer PDF from the Ministry archive",
     },
+    # Spreadsheets (issue #15 asks for at least one Excel/CSV): CEA monthly coal statements,
+    # published as .xls on the National Power Portal. Plant-wise coal receipt by source
+    # (CIL / SCCL / captive / e-auction / import), consumption and closing stock.
+    {
+        "url": "https://npp.gov.in/public-reports/cea/monthly/fuel/2026/AUG/monthCoal1-2026-Aug.xls",
+        "title": "CEA Monthly Coal Report of Thermal Power Stations - August 2026",
+        "publisher": "Central Electricity Authority",
+        "doc_type": "monthly_stats",
+        "fy": "FY 2026-27",
+        "notes": "Spreadsheet: coal receipt by source, consumption and stock per plant ('000 t)",
+    },
+    {
+        "url": "https://npp.gov.in/public-reports/cea/monthly/fuel/2026/AUG/monthImportCoal1-2026-Aug.xls",
+        "title": "CEA Monthly Imported Coal Report of Thermal Power Stations - August 2026",
+        "publisher": "Central Electricity Authority",
+        "doc_type": "monthly_stats",
+        "fy": "FY 2026-27",
+        "notes": "Spreadsheet: imported coal receipt and consumption per plant",
+    },
 ]
+
+# What a downloaded file must start with, by extension, so an HTML error page saved under a
+# document's name is never recorded as the document.
+_OLE2 = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
+MAGIC = {".pdf": (b"%PDF-",), ".xls": (_OLE2,), ".xlsx": (b"PK\x03\x04",)}
 
 # Ministry of Coal parliamentary Q&A archive pages (paginated lists of PQ answer PDFs).
 # Add other divisions here once their URLs are confirmed on coal.gov.in.
@@ -106,7 +130,12 @@ def fetch(url: str, retries: int = 3, timeout: int = 90) -> bytes:
             last = e
             if attempt < retries:
                 time.sleep(2 * attempt)
-    raise RuntimeError(f"failed after {retries} tries: {last}")
+    hint = ""
+    if "CERTIFICATE_VERIFY_FAILED" in str(last):
+        # Some networks re-sign HTTPS with their own CA. Trust that CA explicitly
+        # (SSL_CERT_FILE=/path/to/ca-bundle.pem); never turn verification off.
+        hint = " (if your network uses its own CA, set SSL_CERT_FILE to its bundle)"
+    raise RuntimeError(f"failed after {retries} tries: {last}{hint}")
 
 
 def load_records() -> dict[str, dict]:
@@ -130,8 +159,18 @@ def slug(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
 
 
+def looks_like_document(data: bytes, name: str) -> bool:
+    """True if `data` has the signature its extension promises (CSV: text, not HTML)."""
+    ext = Path(name).suffix.lower()
+    if ext == ".csv":
+        head = data[:4096].removeprefix(b"\xef\xbb\xbf").lstrip().lower()
+        markup = (b"<!doctype", b"<?xml", b"<html", b"<head", b"<body")
+        return bool(head) and b"\x00" not in head and not any(m in head for m in markup)
+    return data.startswith(MAGIC.get(ext, (b"%PDF-",)))
+
+
 def download(item: dict, dest_dir: Path, records: dict[str, dict], delay: float) -> str:
-    """Download one PDF and record it. Returns 'new', 'skipped' or 'failed: ...'."""
+    """Download one document and record it. Returns 'new', 'skipped' or 'failed: ...'."""
     url = item["url"]
     name = urllib.parse.unquote(url.rsplit("/", 1)[-1])
     dest = dest_dir / name
@@ -145,8 +184,8 @@ def download(item: dict, dest_dir: Path, records: dict[str, dict], delay: float)
         return f"failed: {e}"
     finally:
         time.sleep(delay)  # be polite to government servers
-    if not data.startswith(b"%PDF-"):
-        return "failed: response is not a PDF"
+    if not looks_like_document(data, name):
+        return f"failed: response is not a {Path(name).suffix or 'PDF'} file"
 
     dest_dir.mkdir(parents=True, exist_ok=True)
     part = dest.with_suffix(dest.suffix + ".part")

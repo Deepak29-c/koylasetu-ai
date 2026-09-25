@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     # Ask the local LLM to name a table's metric when the keyword rules find none (guide 7.2).
     extract_use_llm: bool = True
     allow_external_calls: bool = False
+    # Re-build the topics (guide 11) once this many new PQs have arrived since the last run.
+    topics_min_new_pqs: int = 5
 
     jwt_secret: str = "change-me"
     jwt_algorithm: str = "HS256"

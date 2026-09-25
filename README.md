@@ -24,6 +24,34 @@ The full technical spec is [docs/KoylaSetu_AI_Developer_Guide.docx](docs/KoylaSe
 
 Built so far:
 
+**PQ reply first draft** (guide 10.1-10.2), "New PQ reply" screen:
+- `POST /pq-replies/draft` (Analyst / Approver): paste house, question no., date, MP, subject
+  and question text; it is saved as a `parliament_questions` row and split into parts on
+  (a), (b)… / a), b)…, (क), (ख)… or (i), (ii)… (the local model splits it only when there
+  are no markers, and its parts must be exact copies from the question). The model is
+  checked first; if it is not there, nothing is saved (503). An `Idempotency-Key` header
+  makes a retry return the draft already made
+- Each part is answered through the Q&A service (`qa.ask`), so the same retrieval, routing
+  and grounding rules apply. Then, stricter than the Ask screen: every sentence with a figure
+  must cite a source and the figure must be in the source it cites (the MP's question does
+  not count, although it often states figures); other sentences are dropped and their
+  figures listed on the part. A part with no source says "Information not found in
+  available documents"
+- Grounding limits (from `services/grounding.py`): numbers written as words are not checked,
+  units are not compared (12.16 MT passes against "12.16 lakh tonnes"), and a small number
+  can match part of a token ("24" in "2023-24")
+- Saved as a DRAFT `pq_reply` report: `content_json` has the header, one block per part
+  `{part, text, table, citations}`, a reply-wide sources list (S1, S2…: document + page)
+  and a plain `text` rendering for the report editor; tables with more than 6 rows become
+  Annexure-I, II…; every source is a `report_citations` row pointing at its fact or chunk
+- `GET /reports/{id}/export?format=docx|pdf` (export permission): official layout (Ministry
+  header, house, Starred/Unstarred Question No., date, subject, MP and parts, ANSWER, Minister
+  line placeholder, "A Statement is laid on the Table" + Statement for starred questions,
+  answers, annexures, internal sources list). DOCX via python-docx, PDF via PyMuPDF (Hindi
+  renders); unapproved reports carry a DRAFT line, warnings and removed-figure notes. A reply
+  edited in the plain-text editor is exported from its text without repeating the header or
+  sources. Nothing is sent anywhere
+
 **Step 3a: validation and review queue** (guide 8, W2), on the facts from "Tables → facts" below:
 - Rules V01-V08 in `worker/validate.py` (subsidiaries add up to CIL, CIL + SCCL + Captive and
   states add up to India, conflicts with other documents, impossible values, unit not stated or
@@ -84,6 +112,22 @@ facts), built in step 3.
 - `GET /documents/{id}/facts`; `python -m worker.extract <document id>` rebuilds the facts
   of a document processed before this existed
 
+**Topic explorer** (guide 11, Module E), Topics screen:
+- Processed PQ answer documents (`pq_answer`) are read into `parliament_questions`: house,
+  starred/unstarred, number, answer date, subject, MPs, question and parts, parsed from the
+  text (tolerates OCR slips; Hindi headers understood)
+- Cleaning: English + Hindi (Devanagari) words, numbers/punctuation dropped, English, Hindi and
+  PQ-wording stopwords (ministry, whether, details, state-wise, coal, …)
+- Topics: TF-IDF over words and two-word phrases + NMF (scikit-learn), deterministic; label =
+  top keywords; counts per year and per session (Budget / Monsoon / Winter); a small Hindi →
+  English glossary lets Hindi questions join the English topic
+- Word cloud as JSON (drawn in the browser), filtered by house / years / session / subsidiary,
+  from questions and/or org-scoped document text, cached by filter
+- Worker job on the `topics` queue: queued after every processed PQ document, re-builds when
+  `TOPICS_MIN_NEW_PQS` (default 5) new questions arrived; admin "Re-run" button
+  (`POST /topics/refresh`); by hand `python -m worker.topics --force`
+- `GET /topics/wordcloud?house=LS&from=2019&to=2025`, `GET /topics`, `GET /topics/{id}/questions`
+
 **Benchmark set** (guide 15.2, issue #16): `eval/pq_benchmark.jsonl` holds 34 real Lok Sabha
 coal questions (2018-2022) with the official written answer, the key figures in it (183 in
 all: value, unit and, for figures from tables or easy to confuse, an optional `label`), a topic
@@ -117,11 +161,13 @@ numbers need the local models pulled and the source documents loaded.
 - RBAC matrix from guide 2.1, checked on every endpoint; org-unit scoping in queries
 - Document upload: file type checked by content, 100 MB limit, sha256 duplicate check, audit log, ingest job queued
 - Document list, detail and retry endpoints
+- Starter corpus: `scripts/load_sources.py` uploads every document in `data/sources.csv`
+  (optional `title` upload field, single file only, keeps the official title)
 - Frontend: login, home, upload (drag and drop, progress bar) and documents pages, with an English/Hindi toggle
 - Seed script with demo users for all 6 roles
 
-Not built yet: NUMERIC route (step 3b, PR #36), reports generation,
-topics, and the Metrics screen that shows the benchmark results. Tables on scanned pages are not detected yet (OCR gives text only).
+Not built yet: NUMERIC route (step 3b, PR #36),
+and the Metrics screen that shows the benchmark results. Tables on scanned pages are not detected yet (OCR gives text only).
 PaddleOCR (`OCR_ENGINE=paddle`) currently falls back to Tesseract.
 
 ## Run with Docker (the normal way)
@@ -183,8 +229,29 @@ python scripts/fetch_sources.py
 
 Files go to `data/raw/` (git-ignored). Each file is recorded in `data/sources.csv` with its
 official URL, publisher, download date and sha256. Safe to re-run: it skips files it already has.
-Current set: 5 key documents (CMPDI coal inventories, Monthly Coal Statistics, Ministry annual
-report chapter, one PQ answer) + 93 Lok Sabha PQ answers from the Ministry of Coal archive.
+Current set (100 files, 99 distinct: two PQ URLs serve the same file): 5 key documents (CMPDI
+coal inventories, Monthly Coal Statistics, Ministry annual report chapter, one PQ answer),
+2 CEA monthly coal statements for thermal power stations (.xls, National Power Portal) and
+93 Lok Sabha PQ answers from the Ministry of Coal archive, 9 of them scanned (no text layer,
+need OCR). If downloads fail with `CERTIFICATE_VERIFY_FAILED` because your network re-signs
+HTTPS, point `SSL_CERT_FILE` at that CA bundle; never turn verification off.
+
+Then load them into a running API (issue #15). Each file is uploaded through the normal
+upload endpoint with its doc type, FY, official title and source URL, marked public, so the
+default login is the demo admin (only CIL HQ / Ministry / Admin may mark documents public):
+
+```bash
+python scripts/load_sources.py --api http://localhost:8000      # all downloaded files
+python scripts/load_sources.py --doc-type coal_inventory --dry-run
+```
+
+It prints `created / duplicate / rejected / missing file / error` per file and in total, and
+exits 1 if any upload failed, the API cannot be reached, or nothing was loaded because the
+files were never downloaded. Safe to re-run: the API recognises files it already has by sha256
+and reports them as duplicates. A duplicate is not changed: it keeps the visibility (public or
+not), title and metadata of its first upload.
+Password: set `KOYLA_PASSWORD` (keeps it out of shell history); `--password` also works, then
+`SEED_DEMO_PASSWORD`, else the seed default.
 
 ## Checks
 

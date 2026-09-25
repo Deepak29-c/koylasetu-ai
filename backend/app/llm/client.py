@@ -81,6 +81,25 @@ def chat(
     return data.get("message", {}).get("content", "").strip()
 
 
+def ensure_available(timeout: float = 5) -> None:
+    """Raise LlmUnavailable unless the model server answers and has the chat model. Used before
+    long jobs (a PQ draft) so they fail at once instead of producing an empty result. Servers
+    without Ollama's /api/tags (e.g. vLLM) are only checked for reachability."""
+    url = f"{base_url()}/api/tags"
+    try:
+        res = httpx.get(url, timeout=timeout)
+    except httpx.HTTPError as e:
+        raise LlmUnavailable(f"model server not reachable at {url}: {e}") from e
+    if res.status_code == 404:
+        return
+    if res.status_code != 200:
+        raise LlmUnavailable(f"model server error {res.status_code}: {res.text[:300]}")
+    model = get_settings().llm_model
+    names = {m.get("name") for m in res.json().get("models", [])}
+    if model not in names and f"{model}:latest" not in names:
+        raise LlmUnavailable(f"model '{model}' is not installed on the model server")
+
+
 def embed_texts(texts: list[str], timeout: float = 300) -> list[list[float]]:
     model = get_settings().embed_model
     data = _post("/api/embed", {"model": model, "input": texts}, timeout)
