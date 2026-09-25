@@ -136,15 +136,24 @@ export type AuditFilters = {
 
 export const AUDIT_PAGE_SIZE = 100;
 
-/** One page of the audit log. The backend has supported limit/offset all along. */
-export function listAuditLog(filters: AuditFilters, offset = 0): Promise<AuditLogRow[]> {
+export type AuditPage = { rows: AuditLogRow[]; hasMore: boolean };
+
+/**
+ * One page of the audit log. The backend has supported limit/offset all along.
+ *
+ * Asks for one row more than it shows: the API returns no total, and "a full page came
+ * back" is not the same as "there is more" — when the count is an exact multiple of the
+ * page size that would offer a Next leading to an empty page.
+ */
+export async function listAuditLog(filters: AuditFilters, offset = 0): Promise<AuditPage> {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(filters)) {
     if (value) params.set(key, value);
   }
-  params.set("limit", String(AUDIT_PAGE_SIZE));
+  params.set("limit", String(AUDIT_PAGE_SIZE + 1));
   params.set("offset", String(offset));
-  return api<AuditLogRow[]>(`/audit?${params.toString()}`);
+  const rows = await api<AuditLogRow[]>(`/audit?${params.toString()}`);
+  return { rows: rows.slice(0, AUDIT_PAGE_SIZE), hasMore: rows.length > AUDIT_PAGE_SIZE };
 }
 
 export function listAuditActions(): Promise<string[]> {

@@ -23,12 +23,14 @@ export default function AuditLogPage() {
   const [filters, setFilters] = useState<AuditFilters>({});
   const [openId, setOpenId] = useState<string | null>(null);
   const [offset, setOffset] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
 
   const load = useCallback(
     (f: AuditFilters, from: number) =>
       listAuditLog(f, from).then(
-        (r) => {
-          setRows(r);
+        (page) => {
+          setRows(page.rows);
+          setHasMore(page.hasMore);
           setError(null);
         },
         (e: unknown) => setError(e instanceof Error ? e.message : String(e)),
@@ -60,8 +62,7 @@ export default function AuditLogPage() {
     window.scrollTo({ top: 0 });
   }
 
-  // A full page means there is probably more; the API returns no total.
-  const maybeMore = rows !== null && rows.length === AUDIT_PAGE_SIZE;
+
 
   const hasFilters = Object.values(filters).some(Boolean);
 
@@ -219,12 +220,12 @@ export default function AuditLogPage() {
           </button>
           <button
             onClick={() => goTo(offset + AUDIT_PAGE_SIZE)}
-            disabled={!maybeMore}
+            disabled={!hasMore}
             className="rounded border px-3 py-1 disabled:text-gray-400"
           >
             {t("next")}
           </button>
-          {maybeMore && <span className="text-gray-500">{t("audit.moreAvailable")}</span>}
+          {hasMore && <span className="text-gray-500">{t("audit.moreAvailable")}</span>}
         </div>
       )}
     </div>
