@@ -128,6 +128,12 @@ class AuditLog(Entity):
     user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), index=True
     )
+    # The unit this entry belongs to, so the audit log scopes like every other list.
+    # Null means "no unit" (a system action, or a failed login on an unknown email) and
+    # is visible only to CIL HQ / Ministry.
+    org_unit_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("org_units.id"), index=True
+    )
     action: Mapped[str] = mapped_column(String(50), index=True)  # login, upload, review, ...
     entity: Mapped[str | None] = mapped_column(String(50))
     entity_id: Mapped[str | None] = mapped_column(String(64))

@@ -84,7 +84,7 @@ def create_report(
     audit.record(
         db,
         "create_report",
-        user_id=user.id,
+        actor=user,
         entity="report",
         entity_id=report.id,
         details={"report_type": report.report_type.value, "title": report.title},
@@ -158,7 +158,7 @@ def update_report(
             )
         )
     audit.record(
-        db, "update_report", user_id=user.id, entity="report", entity_id=report.id, request=request
+        db, "update_report", actor=user, entity="report", entity_id=report.id, request=request
     )
     db.commit()
     db.refresh(report)
@@ -179,7 +179,7 @@ def submit_report(
         )
     report.status = ReportStatus.IN_REVIEW
     audit.record(
-        db, "submit_report", user_id=user.id, entity="report", entity_id=report.id, request=request
+        db, "submit_report", actor=user, entity="report", entity_id=report.id, request=request
     )
     db.commit()
     db.refresh(report)
@@ -210,7 +210,7 @@ def approve_report(
         )
     )
     audit.record(
-        db, "approve_report", user_id=user.id, entity="report", entity_id=report.id, request=request
+        db, "approve_report", actor=user, entity="report", entity_id=report.id, request=request
     )
     db.commit()
     db.refresh(report)
@@ -244,7 +244,7 @@ def reject_report(
     audit.record(
         db,
         "reject_report",
-        user_id=user.id,
+        actor=user,
         entity="report",
         entity_id=report.id,
         details={"comment": body.comment},
