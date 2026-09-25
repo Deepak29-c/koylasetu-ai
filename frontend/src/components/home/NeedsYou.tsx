@@ -126,9 +126,9 @@ function attentionTiles(summary: DashboardSummary, me: Me, t: (k: LabelKey) => s
 export function StatGridSkeleton({ count = 3 }: { count?: number }) {
   const { t } = useT();
   return (
-    <div role="status" aria-label={t("loading")} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    <div role="status" aria-label={t("loading")} className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3">
       {Array.from({ length: count }, (_, i) => (
-        <Skeleton key={i} className="h-[76px] rounded-card" />
+        <Skeleton key={i} className="h-28 rounded-card sm:h-[76px]" />
       ))}
     </div>
   );
@@ -147,7 +147,7 @@ export default function NeedsYou({ summary, me }: { summary: DashboardSummary | 
     );
   }
   return (
-    <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    <ul className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3">
       {tiles.map((tile) => (
         <li key={tile.key}>
           <Stat

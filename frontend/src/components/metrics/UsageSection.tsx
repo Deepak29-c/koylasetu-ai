@@ -52,8 +52,8 @@ function Group({
         </span>
         {title}
       </h3>
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(13rem,1fr))] gap-4">{children}</div>
-      {bars && <div className="grid grid-cols-[repeat(auto-fit,minmax(18rem,1fr))] gap-x-8 gap-y-4 rounded-panel border border-line p-4">{bars}</div>}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-[repeat(auto-fit,minmax(13rem,1fr))] sm:gap-4">{children}</div>
+      {bars && <div className="grid grid-cols-[repeat(auto-fit,minmax(min(18rem,100%),1fr))] gap-x-8 gap-y-4 rounded-panel border border-line p-4">{bars}</div>}
     </section>
   );
 }

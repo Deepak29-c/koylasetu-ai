@@ -100,7 +100,7 @@ export default function HomePage() {
         }
         actions={
           starts.length > 0 ? (
-            <nav aria-label={t("home.startSomething")} className="flex flex-wrap justify-end gap-2">
+            <nav aria-label={t("home.startSomething")} className="flex flex-wrap gap-2 sm:justify-end">
               {starts.map((s, i) => (
                 <ButtonLink key={s.href} href={s.href} variant={i === 0 ? "primary" : "secondary"} icon={s.icon}>
                   {t(s.label)}
@@ -140,7 +140,7 @@ export default function HomePage() {
           {!summary ? (
             <StatGridSkeleton count={2} />
           ) : (
-            <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
+            <ul className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-1">
               {glance.map((g) => (
                 <li key={g.key}>
                   <Stat

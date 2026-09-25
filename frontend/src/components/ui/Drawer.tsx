@@ -40,7 +40,7 @@ export default function Drawer({ title, eyebrow, description, onClose, children,
           wide ? "w-[min(720px,calc(100vw-1rem))]" : "w-[min(540px,calc(100vw-1rem))]",
         )}
       >
-        <div className="flex items-start gap-3 border-b border-line bg-surface-subtle px-6 py-5">
+        <div className="flex items-start gap-3 border-b border-line bg-surface-subtle px-4 py-4 sm:px-6 sm:py-5">
           <div className="min-w-0 flex-1">
             {eyebrow && <p className="text-[11px] font-bold tracking-[0.08em] text-brand uppercase">{eyebrow}</p>}
             <h2 id={titleId} className="text-lg font-semibold text-strong">
@@ -57,8 +57,8 @@ export default function Drawer({ title, eyebrow, description, onClose, children,
             <X size={18} aria-hidden />
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto px-6 py-5">{children}</div>
-        {footer && <div className="flex flex-wrap justify-end gap-2 border-t border-line px-6 py-4">{footer}</div>}
+        <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-5">{children}</div>
+        {footer && <div className="flex flex-wrap justify-end gap-2 border-t border-line px-4 py-3 sm:px-6 sm:py-4">{footer}</div>}
       </div>
     </div>,
     document.body,
