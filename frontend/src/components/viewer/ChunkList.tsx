@@ -32,7 +32,7 @@ export default function ChunkList({
       {chunks.length === 0 ? (
         <EmptyState compact title={t("viewer.noText")} />
       ) : (
-        <ul aria-labelledby="page-text" className="max-h-[70vh] space-y-2 overflow-y-auto p-0.5 pr-1">
+        <ul aria-labelledby="page-text" className="max-h-[70vh] space-y-2 overflow-y-auto scroll-quiet p-0.5 pr-1">
           {chunks.map((c) => {
             const on = c.id === selected;
             return (

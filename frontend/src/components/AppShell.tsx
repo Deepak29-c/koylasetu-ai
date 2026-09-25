@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  Activity,
   ClipboardCheck,
   Cloud,
   FilePlus2,
@@ -64,7 +63,6 @@ const NAV_ICONS: Record<string, typeof House> = {
   "/audit": ScrollText,
   "/admin/templates": LayoutTemplate,
   "/admin/rules": ListChecks,
-  "/admin/status": Activity,
 };
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
@@ -235,9 +233,9 @@ export function LogoMark({ className }: { className?: string }) {
 function SideNav({ me, current, collapsed }: { me: Me | null; current: string | null; collapsed: boolean }) {
   const { t } = useT();
   return (
-    <nav aria-label={t("nav.main")} className="flex-1 overflow-x-hidden overflow-y-auto px-3 py-2">
+    <nav aria-label={t("nav.main")} className="flex-1 overflow-x-hidden overflow-y-auto scroll-quiet px-3 py-1">
       {(me ? visibleNav(me.permissions) : []).map((g, gi) => (
-        <div key={g.label ?? "main"} className={cn(gi > 0 && "mt-4")}>
+        <div key={g.label ?? "main"} className={cn(gi > 0 && "mt-2.5")}>
           {g.label && <GroupLabel label={t(g.label)} collapsed={collapsed} />}
           <ul className="space-y-0.5">
             {g.items.map((it) => (
@@ -283,7 +281,7 @@ function GroupLabel({ label, collapsed }: { label: string; collapsed: boolean })
 }
 
 const railItem =
-  "focus-on-dark relative flex h-10 w-full items-center gap-3 rounded-full px-[14px] text-left text-[13px] font-medium whitespace-nowrap transition-colors";
+  "focus-on-dark relative flex h-9 w-full items-center gap-3 rounded-full px-[14px] text-left text-[13px] font-medium whitespace-nowrap transition-colors";
 
 /** One rail entry. The label stays in the DOM (for screen readers) and fades out when collapsed. */
 function RailLink({
@@ -347,7 +345,7 @@ function AccountNav({
   const { t } = useT();
   if (!me) return null;
   return (
-    <nav aria-label={t("shell.account")} className="border-t border-white/10 px-3 py-3">
+    <nav aria-label={t("shell.account")} className="border-t border-white/10 px-3 py-2">
       <ul className="space-y-0.5">
         <li>
           <RailLink href="/profile" label={t("profile")} icon={UserRound} active={current === "/profile"} collapsed={collapsed} />

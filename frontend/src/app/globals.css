@@ -308,3 +308,13 @@ body {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* A list or table that scrolls inside its own box (wheel, trackpad, touch, keyboard) without
+   drawing a scrollbar, so long content never stretches the page. */
+@utility scroll-quiet {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}

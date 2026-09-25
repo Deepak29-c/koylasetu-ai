@@ -61,7 +61,7 @@ export default function ReviewList({
           <EmptyState compact title={t("review.noMatches")} />
         </div>
       ) : (
-        <ul ref={listRef} aria-label={t("review.listTitle")} className="max-h-[40vh] space-y-2 xl:max-h-[60vh] overflow-y-auto p-3">
+        <ul ref={listRef} aria-label={t("review.listTitle")} className="max-h-[40vh] space-y-2 xl:max-h-[60vh] overflow-y-auto scroll-quiet p-3">
           {items.map((item) => {
             const f = item.fact;
             const active = f.id === selectedId;
