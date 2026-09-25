@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     llm_base_url: str = "http://localhost:11434"
     llm_model: str = "qwen2.5:7b-instruct"
     embed_model: str = "bge-m3"
+    llm_num_ctx: int = 8192  # context window; must fit the prompt + ~6 passages
     ocr_engine: str = "paddle"
     allow_external_calls: bool = False
 

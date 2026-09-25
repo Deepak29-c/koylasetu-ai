@@ -39,6 +39,44 @@ export type UploadResult = {
   error: string | null;
 };
 
+export type Citation = {
+  id: string; // "C1": the marker used inside the answer text
+  chunk_id: string;
+  document_id: string;
+  document: string;
+  page: number;
+  bbox: number[] | null;
+  text: string;
+};
+
+export type AskResult = {
+  qa_id: string;
+  answer: string;
+  route: string;
+  citations: Citation[];
+  grounded: boolean;
+  unmatched_numbers: string[];
+  confidence: "high" | "medium" | "low";
+  not_found: boolean;
+  latency_ms: number;
+};
+
+export type PageData = {
+  document_id: string;
+  document_title: string;
+  source_url: string | null;
+  page_no: number;
+  page_count: number | null;
+  has_text_layer: boolean;
+  ocr_used: boolean;
+  ocr_confidence: number | null;
+  width: number | null;
+  height: number | null;
+  image_url: string | null;
+  chunks: { id: string; text: string; bbox: number[] | null; has_embedding: boolean }[];
+  tables: { id: string; table_title: string | null; bbox: number[] | null; rows_json: string[][] }[];
+};
+
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -111,7 +149,19 @@ export async function api<T>(path: string, init: RequestInit = {}, retry = true)
   }
   if (res.status === 401 && retry && (await refreshTokens())) return api<T>(path, init, false);
   if (!res.ok) throw new ApiError(res.status, await errorMessage(res));
+  if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
+}
+
+/** Fetch an authenticated image (e.g. a page render) as an object URL for <img src>. */
+export async function fetchImageUrl(path: string, retry = true): Promise<string> {
+  const headers = new Headers();
+  const token = read(ACCESS);
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  const res = await fetch(`${API_URL}${path}`, { headers });
+  if (res.status === 401 && retry && (await refreshTokens())) return fetchImageUrl(path, false);
+  if (!res.ok) throw new ApiError(res.status, await errorMessage(res));
+  return URL.createObjectURL(await res.blob());
 }
 
 export async function login(email: string, password: string): Promise<void> {

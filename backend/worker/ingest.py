@@ -16,7 +16,7 @@ from app.core.db import SessionLocal
 from app.models import Chunk, Document, ExtractedTable, Page
 from app.models.enums import DocumentStatus
 from worker import parse
-from worker.embed import chunk_blocks, embed_document
+from worker.embed import embed_document, page_chunks
 from worker.ocr import get_ocr
 
 log = logging.getLogger(__name__)
@@ -75,7 +75,7 @@ def run_pipeline(db, doc: Document) -> None:
                     table_title=table.title,
                 )
             )
-        for draft in chunk_blocks(result.blocks):
+        for draft in page_chunks(result):
             db.add(
                 Chunk(document_id=doc.id, page_no=result.page_no, text=draft.text, bbox=draft.bbox)
             )

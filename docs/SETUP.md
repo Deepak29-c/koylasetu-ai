@@ -64,11 +64,20 @@ If it says Disabled, turn it on in the BIOS (called Intel VT-x or AMD SVM).
 4. Build and start (first time takes 5–10 minutes):
 
    ```bash
-   docker compose up -d --build db redis api worker web
+   docker compose up -d --build
    ```
 
-   `ollama` (the AI model server) is left out on purpose: it is a multi-GB download
-   and is not needed until the Q&A step.
+   The first time this also downloads the Ollama image (the local AI model server, a few GB).
+
+   Then download the two AI models once (about 3 GB in total):
+
+   ```bash
+   docker exec ollama ollama pull bge-m3
+   docker exec ollama ollama pull qwen2.5:3b-instruct
+   ```
+
+   The 3B model is for laptops without a GPU. On a machine with a GPU or 16 GB+ RAM for Docker,
+   pull `qwen2.5:7b-instruct` and set `LLM_MODEL=qwen2.5:7b-instruct` in `.env`.
 
 5. Create the demo users:
 
@@ -95,18 +104,19 @@ All use the password you set in `SEED_DEMO_PASSWORD`.
 
 | Check | Expected |
 |---|---|
-| `docker compose ps` | 5 containers "running" |
+| `docker compose ps` | 6 containers "running" (db, redis, ollama, api, worker, web) |
 | http://localhost:8000/health | `{"status":"ok"}` |
 | http://localhost:8000/docs | API documentation page |
-| Upload a PDF as operator | "Uploaded", then **Failed – not built yet** on Documents (expected until the ingestion pipeline is built) |
+| Upload a PDF as operator | "Uploaded", then Processing → **Processed** on Documents |
+| Ask a question about that PDF on the Ask page | An answer with source chips; clicking one opens the page highlighted (30-60 s on a laptop CPU) |
 
 ## 6. Daily commands
 
 | What | Command |
 |---|---|
-| Start | `docker compose up -d db redis api worker web` |
+| Start | `docker compose up -d` |
 | Stop | `docker compose down` |
-| After pulling new code | `docker compose up -d --build db redis api worker web` |
+| After pulling new code | `docker compose up -d --build` |
 | See API errors | `docker compose logs -f api` (or `worker`, `web`) |
 | Wipe the database and start fresh | `docker compose down -v`, then start and seed again |
 | Backend tests (needs Python 3.11) | `cd backend`, create a venv, `pip install -r requirements.txt`, `pytest -q` |
@@ -119,7 +129,9 @@ All use the password you set in `SEED_DEMO_PASSWORD`.
 | `failed to connect to the docker API … docker_engine` | Docker Desktop is not running. Open it and wait for "Engine running" |
 | Error about the `docker-users` group | Sign out of Windows and sign back in |
 | Build fails with `rpc error … EOF` | Build one at a time: `docker compose build api`, then `docker compose build web`, then start |
-| First start downloads many GB | You included `ollama`. Leave it out for now (see step 4) |
+| First start downloads many GB | Expected once: the Ollama image and the two models. Later starts reuse them |
+| Ask page says "The local AI model is not available" | `docker compose up -d ollama`, and check `docker exec ollama ollama list` shows both models |
+| Answers are very slow | Normal on CPU (30-60 s with the 3B model). Close other heavy apps; a GPU machine is much faster |
 | "An Application Control policy has blocked this file" (Python outside Docker) | Windows Smart App Control blocks SQLAlchemy's compiled files. See the Windows note in the README |
 | Port 3000, 8000 or 5432 already in use | Stop the other app using that port (e.g. a local Postgres or another Next.js project) |
 | Login says "Wrong email or password" | Use the `SEED_DEMO_PASSWORD` from your own `.env`, and make sure you ran the seed step |
