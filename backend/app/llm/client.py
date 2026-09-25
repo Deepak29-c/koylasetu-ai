@@ -59,19 +59,45 @@ def _post(path: str, payload: dict, timeout: float) -> dict:
     return res.json()
 
 
-def chat(system: str, user: str, *, temperature: float = 0.1, timeout: float = 300) -> str:
-    """One-shot chat completion. Low temperature by default (guide 17.2)."""
-    data = _post(
-        "/api/chat",
-        {
-            "model": get_settings().llm_model,
-            "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
-            "stream": False,
-            "options": {"temperature": temperature, "num_ctx": get_settings().llm_num_ctx},
-        },
-        timeout,
-    )
+def chat(
+    system: str,
+    user: str,
+    *,
+    temperature: float = 0.1,
+    timeout: float = 300,
+    json_schema: dict | None = None,
+) -> str:
+    """One-shot chat completion. Low temperature by default (guide 17.2). With `json_schema`
+    the model server constrains the reply to JSON of that shape (validate it anyway)."""
+    payload = {
+        "model": get_settings().llm_model,
+        "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
+        "stream": False,
+        "options": {"temperature": temperature, "num_ctx": get_settings().llm_num_ctx},
+    }
+    if json_schema is not None:
+        payload["format"] = json_schema
+    data = _post("/api/chat", payload, timeout)
     return data.get("message", {}).get("content", "").strip()
+
+
+def ensure_available(timeout: float = 5) -> None:
+    """Raise LlmUnavailable unless the model server answers and has the chat model. Used before
+    long jobs (a PQ draft) so they fail at once instead of producing an empty result. Servers
+    without Ollama's /api/tags (e.g. vLLM) are only checked for reachability."""
+    url = f"{base_url()}/api/tags"
+    try:
+        res = httpx.get(url, timeout=timeout)
+    except httpx.HTTPError as e:
+        raise LlmUnavailable(f"model server not reachable at {url}: {e}") from e
+    if res.status_code == 404:
+        return
+    if res.status_code != 200:
+        raise LlmUnavailable(f"model server error {res.status_code}: {res.text[:300]}")
+    model = get_settings().llm_model
+    names = {m.get("name") for m in res.json().get("models", [])}
+    if model not in names and f"{model}:latest" not in names:
+        raise LlmUnavailable(f"model '{model}' is not installed on the model server")
 
 
 def embed_texts(texts: list[str], timeout: float = 300) -> list[list[float]]:

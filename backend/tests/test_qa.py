@@ -336,6 +336,11 @@ def test_model_down_still_answers_figures():
     assert "12.70 MT [F1]" in result.answer and result.grounded
 
 
+def test_plain_sentence_labels_unverified_figures():
+    flagged = [fact_row("F1", "NCL", "coal_production", "2024-12", "12.70", status="FLAGGED")]
+    assert "12.70 MT (unverified) [F1]" in qa.template_answer(flagged)
+
+
 def test_unverified_facts_are_marked_for_the_model():
     flagged = [fact_row("F1", "NCL", "coal_production", "2024-12", "12.70", status="FLAGGED")]
     _, _, seen = ask_numeric(Q_NCL, flagged, "NCL: 12.70 MT [F1] (unverified).")

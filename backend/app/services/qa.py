@@ -165,7 +165,8 @@ def template_answer(facts: list[FactRow]) -> str:
         lead = f"The {' and '.join(what)} figures for {', '.join(periods)}"
         return f"{lead} are given in the table below. {refs}"
     return " ".join(
-        f"{f.who} {fact_line(f).split(' | ')[1]}, {f.period_text}: {fact_value(f)} [{f.ref}]."
+        f"{f.who} {fact_line(f).split(' | ')[1]}, {f.period_text}: {fact_value(f)}"
+        f"{'' if f.status == 'VERIFIED' else ' (unverified)'} [{f.ref}]."
         for f in facts
     )
 

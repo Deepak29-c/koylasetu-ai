@@ -45,6 +45,21 @@ def test_operator_cannot_mark_public(client_as):
     assert res.status_code == 403
 
 
+def test_title_only_for_a_single_file(client_as):
+    pdf = ("a.pdf", b"%PDF-1.7", "application/pdf")
+    res = client_as(["admin"], "CIL_HQ").post(
+        "/documents",
+        data={"doc_type": "other", "title": "Coal Stock"},
+        files=[("files", pdf), ("files", ("b.pdf", b"%PDF-1.7", "application/pdf"))],
+    )
+    assert res.status_code == 422
+    assert "single file" in res.json()["detail"]
+    res = client_as(["admin"], "CIL_HQ").post(
+        "/documents", data={"doc_type": "other", "title": "x" * 501}, files={"files": pdf}
+    )
+    assert res.status_code == 422
+
+
 def test_unclear_fy_is_rejected_before_saving(client_as):
     res = client_as(["operator"]).post(
         "/documents",
@@ -73,3 +88,13 @@ def test_edit_and_reject_need_a_comment(client_as):
     reviewer = client_as(["reviewer"])
     assert reviewer.post(url, json={"action": "REJECT"}).status_code == 422
     assert reviewer.post(url, json={"action": "EDIT", "comment": "typo"}).status_code == 422
+
+
+def test_viewer_cannot_list_raw_facts(client_as):
+    doc_id = "00000000-0000-0000-0000-000000000001"
+    assert client_as(["viewer"]).get(f"/documents/{doc_id}/facts").status_code == 403
+
+
+def test_facts_needs_login():
+    doc_id = "00000000-0000-0000-0000-000000000001"
+    assert TestClient(app).get(f"/documents/{doc_id}/facts").status_code == 401

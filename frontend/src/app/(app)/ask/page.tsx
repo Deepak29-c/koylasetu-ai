@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useRef, useState } from "react";
 
 import { api, type AskResult, type Citation } from "@/lib/api";
 import { type LabelKey, useT } from "@/lib/i18n";
@@ -72,8 +73,19 @@ function AnswerText({ result }: { result: AskResult }) {
 }
 
 export default function AskPage() {
+  // useSearchParams needs a Suspense boundary for Next's static render pass.
+  return (
+    <Suspense fallback={null}>
+      <AskPageInner />
+    </Suspense>
+  );
+}
+
+function AskPageInner() {
   const { t } = useT();
-  const [question, setQuestion] = useState("");
+  // The home page's quick-ask box hands the question over as ?q=…
+  const prefill = useSearchParams().get("q")?.trim() ?? "";
+  const [question, setQuestion] = useState(prefill);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<AskResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -81,7 +93,11 @@ export default function AskPage() {
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (question.trim().length < 3) return;
+    await runAsk(question);
+  }
+
+  async function runAsk(asked: string) {
+    if (asked.trim().length < 3) return;
     setBusy(true);
     setError(null);
     setResult(null);
@@ -91,7 +107,7 @@ export default function AskPage() {
         await api<AskResult>("/qa/ask", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ question }),
+          body: JSON.stringify({ question: asked }),
         }),
       );
     } catch (err) {
@@ -100,6 +116,14 @@ export default function AskPage() {
       setBusy(false);
     }
   }
+
+  const askedPrefill = useRef(false);
+  useEffect(() => {
+    if (prefill.length >= 3 && !askedPrefill.current) {
+      askedPrefill.current = true;
+      void runAsk(prefill);
+    }
+  }, [prefill]);
 
   async function sendFeedback(score: 1 | -1) {
     if (!result) return;

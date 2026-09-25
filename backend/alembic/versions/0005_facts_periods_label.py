@@ -1,7 +1,7 @@
 """Facts: YTD and AS_ON period types, source label, longer category.
 
-Revision ID: 0002_facts_periods_label
-Revises: 0001_initial
+Revision ID: 0005_facts_periods_label
+Revises: 0004_merge_heads
 Create Date: 2026-09-26
 """
 
@@ -10,8 +10,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0002_facts_periods_label"
-down_revision: str | None = "0001_initial"
+revision: str = "0005_facts_periods_label"
+down_revision: str | None = "0004_merge_heads"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

@@ -13,13 +13,15 @@ from dataclasses import dataclass, field
 
 from app.models.enums import Metric, PeriodType, QaRoute
 from app.services.normalise import (
-    COAL_STATES,
-    MONTHS,
-    SUBSIDIARY_ALIASES,
+    ALL_INDIA,
+    match_state,
+    match_subsidiaries,
     month_in_fy,
     normalise_fy,
     to_ascii_digits,
 )
+
+MONTHS = {m: i for i, m in enumerate("jan feb mar apr may jun jul aug sep oct nov dec".split(), 1)}
 
 _METRIC_WORDS = [
     (
@@ -45,28 +47,14 @@ _MONTH_YEAR = re.compile(r"\b(" + "|".join(MONTHS) + r")[a-z]*\.?\s*[',’]?\s*(
 _AS_ON = re.compile(r"\bas\s+on\s+(\d{1,2})[.\-/](\d{1,2})[.\-/](\d{4})", re.I)
 _UPTO = re.compile(r"\b(?:up\s*to|upto|till|until|cumulative|so far|april\s*[-–to]+)\b", re.I)
 
-# Aliases people use in questions, beyond the codes (e.g. "Mahanadi Coalfields")
-_SUBSIDIARY_NAMES = {
-    "ECL": ["eastern coalfields"],
-    "BCCL": ["bharat coking coal"],
-    "CCL": ["central coalfields"],
-    "NCL": ["northern coalfields"],
-    "WCL": ["western coalfields"],
-    "SECL": ["south eastern coalfields", "south-eastern coalfields"],
-    "MCL": ["mahanadi coalfields"],
-    "NEC": ["north eastern coalfields"],
-    "CIL": ["coal india"],
-    "SCCL": ["singareni"],
-    "CAPTIVE": ["captive", "commercial mines"],
-    "ALL_INDIA": [
-        "all india",
-        "whole country",
-        "the country",
-        "india's",
-        "indian coal",
-        "national",
-    ],
-}
+# Company names and codes come from the extractor's alias map (normalise.match_subsidiaries);
+# these extra phrases mean the all-India total, stored as subsidiary "INDIA".
+_ALL_INDIA = re.compile(
+    r"\ball[\s-]+india\b|\bwhole country\b|\bthe country\b|\bindia's\b|\bindian coal\b"
+    r"|\bnational\b",
+    re.I,
+)
+_ORDER = ["ECL", "BCCL", "CCL", "NCL", "WCL", "SECL", "MCL", "NEC", "CIL", "SCCL", "CAPTIVE"]
 
 
 @dataclass
@@ -102,22 +90,25 @@ class Route:
 
 
 def _find_subsidiaries(q: str) -> list[str]:
-    found = []
-    for code, aliases in SUBSIDIARY_ALIASES.items():
-        names = [a for a in aliases if len(a) <= 5] + _SUBSIDIARY_NAMES.get(code, [])
-        for name in names:
-            pattern = rf"\b{re.escape(name)}\b" if len(name) <= 5 else re.escape(name)
-            flags = 0 if len(name) <= 5 and name.isupper() else re.I
-            if re.search(pattern, q, flags):
-                found.append(code)
-                break
-    # "CIL" also matches inside "coal india"; a named subsidiary + CIL stays as asked
+    codes, _ = match_subsidiaries(q)
+    found = [c for c in _ORDER if c in codes]
+    if _ALL_INDIA.search(q):
+        found.append(ALL_INDIA)
     return found
 
 
 def _find_states(q: str) -> list[str]:
-    ql = q.lower().replace("orissa", "odisha")
-    return [s for s in COAL_STATES if re.search(rf"\b{re.escape(s.lower())}\b", ql)]
+    """States named in the question, as stored in facts ("Odisha"); longest phrase first."""
+    words = re.findall(r"[A-Za-z&]+", q)
+    found: set[str] = set()
+    used: set[int] = set()
+    for n in (3, 2, 1):
+        for i in range(len(words) - n + 1):
+            span = set(range(i, i + n))
+            if not span & used and (state := match_state(" ".join(words[i : i + n]))):
+                used |= span
+                found.add(state)
+    return sorted(found)
 
 
 def extract_filters(question: str) -> Filters:

@@ -34,7 +34,7 @@ def test_full_company_names_and_states():
     f = extract_filters("Coal production of Mahanadi Coalfields and Northern Coalfields in 2023-24")
     assert set(f.subsidiaries) == {"MCL", "NCL"}
     f = extract_filters("Measured coal resources in Orissa and Jharkhand")
-    assert f.states == ["JHARKHAND", "ODISHA"] and f.category == "Measured"
+    assert f.states == ["Jharkhand", "Odisha"] and f.category == "Measured"
     assert f.metrics == [Metric.COAL_RESOURCE]
 
 
@@ -68,3 +68,12 @@ def test_numbers_plus_steps_is_mixed():
 
 def test_word_ncl_inside_other_words_is_not_a_company():
     assert extract_filters("the uncle of the minister").subsidiaries == []
+
+
+def test_states_and_all_india_use_the_extractor_names():
+    assert extract_filters("Coal resources of West Bengal and Madhya Pradesh").states == [
+        "Madhya Pradesh",
+        "West Bengal",
+    ]
+    assert extract_filters("All India coal production in 2023-24").subsidiaries == ["INDIA"]
+    assert extract_filters("Production of South Eastern Coalfields").subsidiaries == ["SECL"]

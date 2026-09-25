@@ -259,14 +259,14 @@ function ReviewDetail({ item, onDone }: { item: ReviewItem; onDone: (factId: str
               onClick={() => (mode === "EDIT" ? submit("EDIT") : setMode("EDIT"))}
               className="rounded border border-brand px-4 py-2 text-sm font-medium text-brand disabled:opacity-50"
             >
-              {mode === "EDIT" ? `${t("edit")} ✓` : t("edit")}
+              {mode === "EDIT" ? `${t("reviewEdit")} ✓` : t("reviewEdit")}
             </button>
             <button
               disabled={busy}
               onClick={() => submit("REJECT")}
               className="rounded border border-red-600 px-4 py-2 text-sm font-medium text-red-700 disabled:opacity-50"
             >
-              {t("reject")}
+              {t("reviewReject")}
             </button>
             {busy && <span className="self-center text-sm text-gray-500">{t("saving")}</span>}
           </div>

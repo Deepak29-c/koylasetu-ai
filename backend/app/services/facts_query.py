@@ -9,16 +9,16 @@ verified facts win over unverified ones for the same figure.
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
-from sqlalchemy import or_, select, text
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.core.db import SessionLocal
 from app.core.deps import scope_to_user
 from app.models import Document, Fact, User
 from app.models.enums import FactStatus, Metric, PeriodType
-from app.services.normalise import CIL_SUBSIDIARIES
+from app.services.normalise import ALL_INDIA, CIL_SUBSIDIARIES
 from app.services.router import Filters
 
 MAX_ROWS = 60
@@ -46,7 +46,7 @@ class FactRow:
 
     @property
     def who(self) -> str:
-        return {"ALL_INDIA": "All India", "CAPTIVE": "Captive/Others"}.get(
+        return {ALL_INDIA: "All India", "CAPTIVE": "Captive/Others"}.get(
             self.subsidiary or self.state or "", self.subsidiary or (self.state or "").title()
         )
 
@@ -78,7 +78,11 @@ def _statement(f: Filters, user: User):
     stmt = (
         select(Fact, Document.title)
         .join(Document, Document.id == Fact.document_id)
-        .where(Fact.metric.in_(f.metrics), Fact.status != FactStatus.REJECTED)
+        .where(
+            Fact.metric.in_(f.metrics),
+            Fact.status != FactStatus.REJECTED,
+            Fact.value_std.is_not(None),  # a unit we couldn't convert is not a usable figure
+        )
     )
     resource = f.metrics == [Metric.COAL_RESOURCE]
     subsidiaries = list(f.subsidiaries)
@@ -92,7 +96,7 @@ def _statement(f: Filters, user: User):
     elif not f.breakdown:
         # Nothing named: the national figure (India total, or CIL for company tables)
         stmt = stmt.where(
-            Fact.state == "ALL_INDIA" if resource else Fact.subsidiary.in_(["ALL_INDIA", "CIL"])
+            Fact.subsidiary == ALL_INDIA if resource else Fact.subsidiary.in_([ALL_INDIA, "CIL"])
         )
     elif resource:
         stmt = stmt.where(Fact.state.is_not(None))
@@ -100,12 +104,11 @@ def _statement(f: Filters, user: User):
         stmt = stmt.where(Fact.subsidiary.is_not(None))
 
     if resource:
+        # Measured / Indicated / Inferred; the total resource has no category
         if f.category:
             stmt = stmt.where(Fact.category.like(f"{f.category}%"))
         else:
-            stmt = stmt.where(Fact.category.like("Total%"))
-        coking = Fact.category.like("%· Coking")
-        stmt = stmt.where(coking if f.coking else or_(Fact.category.is_(None), ~coking))
+            stmt = stmt.where(Fact.category.is_(None))
     if f.period_type and f.periods:
         stmt = stmt.where(Fact.period_type == f.period_type, Fact.period.in_(f.periods))
     return scope_to_user(stmt, Document, user).order_by(Fact.period.desc(), Fact.subsidiary)
@@ -126,6 +129,10 @@ def query_facts(db: Session, user: User, f: Filters, run=_run) -> list[FactRow]:
     """Facts matching the filters. If a period was asked for but none match exactly (e.g. a
     full FY when only year-to-date figures exist), returns nothing, so the answer never
     silently swaps in a different period. When no period was asked, uses the latest one."""
+    if f.coking:
+        # Coking coal is stored only as its own metric (coking_coal_production); an overall
+        # despatch or resource figure must not be given as the coking-coal one.
+        f = replace(f, metrics=[m for m in f.metrics if m == Metric.COKING_COAL_PRODUCTION])
     if not f.metrics:
         return []
     rows = run(_statement(f, user))

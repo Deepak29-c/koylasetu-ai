@@ -13,11 +13,12 @@ from sqlalchemy import (
     UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Entity, str_enum
 from app.models.document import EMBED_DIM
 from app.models.enums import House, QaRoute, QuestionType, ReportStatus, ReportType
+from app.models.org import User
 
 
 class ParliamentQuestion(Entity):
@@ -75,6 +76,8 @@ class ReportVersion(Entity):
     edited_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     change_note: Mapped[str | None] = mapped_column(Text)
 
+    editor: Mapped[User] = relationship(foreign_keys=[edited_by], lazy="joined")
+
 
 class ReportCitation(Entity):
     """Links every figure in a report to its source fact or chunk."""
@@ -109,6 +112,8 @@ class QaLog(Entity):
 
 
 class Topic(Entity):
+    """One topic of one topic-model run (guide 11). The API shows the latest run."""
+
     __tablename__ = "topics"
 
     run_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)
@@ -116,7 +121,10 @@ class Topic(Entity):
     label: Mapped[str] = mapped_column(String(300))
     keywords: Mapped[list] = mapped_column(JSONB)
     size: Mapped[int] = mapped_column(Integer)
+    # {"year": {"2021": 4}, "session": {"2021-budget": 3}, "undated": 0}
     period_counts_json: Mapped[dict | None] = mapped_column(JSONB)
+    # [{"question_id": "...", "weight": 0.41, "keywords": ["coking", ...]}], strongest first
+    members_json: Mapped[list | None] = mapped_column(JSONB)
 
 
 class AuditLog(Entity):
@@ -125,8 +133,16 @@ class AuditLog(Entity):
     user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), index=True
     )
+    # The unit this entry belongs to, so the audit log scopes like every other list.
+    # Null means "no unit" (a system action, or a failed login on an unknown email) and
+    # is visible only to CIL HQ / Ministry.
+    org_unit_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("org_units.id"), index=True
+    )
     action: Mapped[str] = mapped_column(String(50), index=True)  # login, upload, review, ...
     entity: Mapped[str | None] = mapped_column(String(50))
     entity_id: Mapped[str | None] = mapped_column(String(64))
     details_json: Mapped[dict | None] = mapped_column(JSONB)
     ip: Mapped[str | None] = mapped_column(String(64))
+
+    user: Mapped[User | None] = relationship(lazy="joined")
