@@ -71,3 +71,6 @@ def test_default_settings_never_allow_outside_calls():
     example = (SCRIPT.parents[1] / ".env.example").read_text(encoding="utf-8")
     assert "ALLOW_EXTERNAL_CALLS=false" in example
     assert "EMBED_MODEL=bge-m3" in example
+    # A checkout without .env uses the same (documented, laptop-sized) model as .env.example.
+    assert f"LLM_MODEL={s.llm_model}\n" in example
+    assert f"EMBED_MODEL={s.embed_model}\n" in example

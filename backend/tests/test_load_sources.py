@@ -1,0 +1,250 @@
+"""scripts/load_sources.py and fetch_sources.py: the parts that need no network (issue #15).
+
+The loader itself was run twice against a local API + Postgres: the first run created every
+downloaded document, the second reported each one as a duplicate.
+"""
+
+import csv
+import importlib.util
+import sys
+import urllib.error
+from collections import Counter
+from pathlib import Path
+
+import pytest
+
+from app.models.enums import DocType
+
+SCRIPTS = Path(__file__).resolve().parents[2] / "scripts"
+
+
+def _load(name: str):
+    spec = importlib.util.spec_from_file_location(name, SCRIPTS / f"{name}.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+loader = _load("load_sources")
+fetcher = _load("fetch_sources")
+
+ROWS = [
+    {"file": "data/raw/a.pdf", "title": "Shortage of Coal", "doc_type": "pq_answer", "fy": ""},
+    {"file": "data/raw/b.pdf", "title": "Coal Inventory 2024", "doc_type": "coal_inventory"},
+    {"file": "data/raw/c.xls", "title": "CEA Monthly Coal Report", "doc_type": "monthly_stats"},
+    {"file": "data/raw/shortage.pdf", "title": "Coal Stock", "doc_type": "pq_answer"},
+]  # fmt: skip
+
+
+def test_doc_types_match_the_api():
+    assert loader.DOC_TYPES == {t.value for t in DocType}
+
+
+def test_select_rows_by_type_match_and_limit():
+    assert len(loader.select_rows(ROWS)) == 4
+    assert [r["file"] for r in loader.select_rows(ROWS, ["pq_answer"])] == [
+        "data/raw/a.pdf",
+        "data/raw/shortage.pdf",
+    ]
+    # match looks at the title and the file name, case-insensitively
+    assert len(loader.select_rows(ROWS, match="SHORTAGE")) == 2
+    assert loader.select_rows(ROWS, ["coal_inventory", "monthly_stats"], limit=1) == [ROWS[1]]
+    assert loader.select_rows(ROWS, ["annual_report"]) == []
+
+
+def test_form_fields_carry_provenance():
+    row = {
+        "file": "data/raw/ministry-of-coal/msg-dec24.pdf",
+        "title": "Monthly Coal Statistics -  December 2024",
+        "source_url": "https://coal.nic.in/sites/default/files/2025-01/msg-dec24.pdf",
+        "doc_type": "monthly_stats",
+        "fy": "FY 2024-25",
+    }
+    assert loader.form_fields(row) == {
+        "doc_type": "monthly_stats",
+        "language": "en",
+        "is_public": "true",
+        "fy": "FY 2024-25",
+        "source_url": "https://coal.nic.in/sites/default/files/2025-01/msg-dec24.pdf",
+        "title": "Monthly Coal Statistics - December 2024",
+    }
+
+
+def test_form_fields_leave_out_blanks_and_fix_unknown_types():
+    fields = loader.form_fields({"file": "x.pdf", "doc_type": "press_release", "fy": " "}, False)
+    assert fields == {"doc_type": "other", "language": "en", "is_public": "false"}
+    assert loader.form_fields({"file": "x.pdf", "language": "hi"})["language"] == "hi"
+
+
+def test_multipart_body_has_fields_and_file():
+    body = loader.multipart_body(
+        {"doc_type": "other", "title": "Coal – Stock"},
+        'a"b.pdf',
+        b"%PDF-1.7",
+        "application/pdf",
+        "B",
+    )
+    text = body.decode("utf-8")
+    assert text.startswith("--B\r\n")
+    assert 'name="doc_type"\r\n\r\nother\r\n' in text
+    assert "Coal – Stock" in text
+    assert (
+        'name="files"; filename="a\'b.pdf"\r\nContent-Type: application/pdf\r\n\r\n%PDF-1.7' in text
+    )
+    assert text.endswith("--B--\r\n")
+
+
+def test_outcome_and_summary():
+    assert loader.outcome([{"result": "created", "document": {"id": "d1"}}]) == ("created", "id=d1")
+    dup = [
+        {"result": "duplicate", "document": None, "error": "This exact file was uploaded before"}
+    ]
+    assert loader.outcome(dup) == ("duplicate", "This exact file was uploaded before")
+    assert loader.outcome([]) == ("error", "empty response")
+    counts = Counter({"created": 3, "missing file": 1})
+    assert loader.summary_line(counts) == (
+        "3 created, 0 duplicate, 0 rejected, 1 missing file, 0 error"
+    )
+
+
+def test_sources_csv_rows_are_loadable():
+    """Every row names a file under data/raw, an http(s) source and a known doc type."""
+    rows = loader.read_sources()
+    assert len(rows) >= 20
+    kinds = Counter(Path(r["file"]).suffix.lower() for r in rows)
+    assert kinds[".pdf"] and (kinds[".xls"] or kinds[".xlsx"] or kinds[".csv"])
+    for row in rows:
+        assert row["file"].startswith("data/raw/")
+        assert row["source_url"].startswith(("https://", "http://"))
+        assert row["doc_type"] in loader.DOC_TYPES
+        assert len(row["sha256"]) == 64
+        loader.form_fields(row)  # never raises
+    with loader.SOURCES_CSV.open(newline="", encoding="utf-8") as f:
+        assert csv.DictReader(f).fieldnames == fetcher.FIELDS
+
+
+def test_downloader_checks_the_file_signature():
+    ole2 = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
+    assert fetcher.looks_like_document(b"%PDF-1.4 ...", "a.pdf")
+    assert fetcher.looks_like_document(ole2 + b"...", "monthCoal1-2026-Aug.xls")
+    assert fetcher.looks_like_document(b"PK\x03\x04...", "t.xlsx")
+    assert fetcher.looks_like_document(b"year,production\n2024,1047.5\n", "p.csv")
+    # an HTML error or bot-check page saved under the document's name is refused
+    assert not fetcher.looks_like_document(b"<!DOCTYPE html><html>", "t.xlsx")
+    assert not fetcher.looks_like_document(b"<!DOCTYPE html><html>", "p.csv")
+    assert not fetcher.looks_like_document(b"<html>", "a.pdf")
+
+
+def test_csv_check_handles_bom_and_markup():
+    assert fetcher.looks_like_document(b"\xef\xbb\xbfyear,production\n2024,1047.5\n", "p.csv")
+    assert not fetcher.looks_like_document(b"\xef\xbb\xbf<!DOCTYPE html><html>", "p.csv")
+    assert not fetcher.looks_like_document(b'<?xml version="1.0"?><error/>', "p.csv")
+    assert not fetcher.looks_like_document(b"\n\n  <head><title>Blocked</title>", "p.csv")
+    assert not fetcher.looks_like_document(b"Request blocked <body>try later</body>", "p.csv")
+    assert not fetcher.looks_like_document(b"", "p.csv")
+
+
+# --- Failure handling: the API down, restarting or timing out mid-run ---------------------
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        urllib.error.URLError(ConnectionRefusedError(10061, "refused")),
+        TimeoutError("timed out"),
+        ConnectionResetError(10054, "reset"),
+    ],
+)
+def test_unreachable_api_is_a_clear_error(monkeypatch, error):
+    def boom(*_args, **_kwargs):
+        raise error
+
+    monkeypatch.setattr(loader.urllib.request, "urlopen", boom)
+    api = loader.Api("http://127.0.0.1:9/", "admin@koylasetu.local", "pw")
+    with pytest.raises(loader.ApiUnreachable, match=r"cannot reach API at http://127.0.0.1:9"):
+        api.login()
+
+
+def test_main_exits_1_with_one_line_when_api_is_down(monkeypatch, capsys):
+    def down(self):
+        raise loader.ApiUnreachable("cannot reach API at x")
+
+    monkeypatch.setattr(sys, "argv", ["load_sources.py", "--api", "http://127.0.0.1:9"])
+    monkeypatch.setattr(loader.Api, "login", down)
+    assert loader.main() == 1
+    assert capsys.readouterr().err.strip() == "cannot reach API at x"
+
+
+class FakeApi:
+    """Answers uploads from a script: one result tuple or exception per file."""
+
+    def __init__(self, script):
+        self.script = list(script)
+        self.calls = 0
+
+    def upload(self, fields, path):
+        self.calls += 1
+        step = self.script.pop(0)
+        if isinstance(step, Exception):
+            raise step
+        return step
+
+
+def _rows(tmp_path, monkeypatch, n):
+    monkeypatch.setattr(loader, "ROOT", tmp_path)
+    rows = []
+    for i in range(n):
+        (tmp_path / f"{i}.pdf").write_bytes(b"%PDF-1.7")
+        rows.append({"file": f"{i}.pdf", "title": f"Doc {i}", "doc_type": "pq_answer"})
+    return rows
+
+
+def test_one_unreachable_upload_does_not_stop_the_run(tmp_path, monkeypatch):
+    rows = _rows(tmp_path, monkeypatch, 3)
+    api = FakeApi(
+        [
+            (200, [{"result": "created", "document": {"id": "a"}}]),
+            loader.ApiUnreachable("cannot reach API at x: timed out"),
+            (200, [{"result": "duplicate", "document": None, "error": "seen"}]),
+        ]
+    )
+    counts = loader.load_rows(rows, api)
+    assert api.calls == 3
+    assert counts == Counter({"created": 1, "error": 1, "duplicate": 1})
+    assert loader.exit_code(counts) == 1
+
+
+def test_failed_relogin_stops_gracefully(tmp_path, monkeypatch, capsys):
+    rows = _rows(tmp_path, monkeypatch, 4)
+    api = FakeApi(
+        [
+            (200, [{"result": "created", "document": {"id": "a"}}]),
+            loader.LoginFailed("login as admin failed (HTTP 401): Wrong email or password"),
+        ]
+    )
+    counts = loader.load_rows(rows, api)
+    assert api.calls == 2  # nothing sent after the failed login
+    assert counts == Counter({"created": 1, "error": 1, "not tried": 2})
+    assert "stopping" in capsys.readouterr().out
+    assert "2 not tried" in loader.summary_line(counts)
+    assert loader.exit_code(counts) == 1
+
+
+def test_http_errors_are_counted(tmp_path, monkeypatch):
+    rows = _rows(tmp_path, monkeypatch, 1)
+    counts = loader.load_rows(rows, FakeApi([(403, {"detail": "Only CIL HQ ..."})]))
+    assert counts == Counter({"error": 1})
+
+
+def test_missing_files_are_not_sent(tmp_path, monkeypatch):
+    monkeypatch.setattr(loader, "ROOT", tmp_path)
+    api = FakeApi([])
+    counts = loader.load_rows([{"file": "nope.pdf", "title": "x"}], api)
+    assert api.calls == 0 and counts == Counter({"missing file": 1})
+
+
+def test_exit_code_when_nothing_was_fetched():
+    assert loader.exit_code(Counter({"missing file": 5})) == 1
+    assert loader.exit_code(Counter({"missing file": 5, "duplicate": 1})) == 0
+    assert loader.exit_code(Counter({"created": 2})) == 0
+    assert loader.exit_code(Counter({"dry run": 2})) == 0

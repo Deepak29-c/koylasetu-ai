@@ -49,10 +49,15 @@ async def upload_documents(
     language: str = Form("en"),
     is_public: bool = Form(False),
     source_url: str | None = Form(None),
+    title: str | None = Form(None),
     user: User = Depends(require(Permission.UPLOAD_DOCUMENTS)),
     db: Session = Depends(get_db),
 ) -> list[UploadResult]:
-    """Upload one or many files. Each file gets its own result (created / duplicate / rejected)."""
+    """Upload one or many files. Each file gets its own result (created / duplicate / rejected).
+
+    `title` is optional and only allowed for a single file (e.g. the bulk loader sends the
+    official title from data/sources.csv); otherwise the title is the file name.
+    """
     if is_public and not (sees_all_units(user) or Role.ADMIN in user.roles):
         raise HTTPException(
             status.HTTP_403_FORBIDDEN, "Only CIL HQ, Ministry or Admin can mark documents public"
@@ -61,6 +66,12 @@ async def upload_documents(
         fy = normalise_fy(fy)
     except ValueError as e:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(e)) from None
+    title = " ".join(title.split()) if title else None
+    if title and (len(files) != 1 or len(title) > 500):
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "A title can only be given for a single file, up to 500 characters",
+        )
 
     results: list[UploadResult] = []
     for upload in files:
@@ -105,7 +116,7 @@ async def upload_documents(
 
         path = storage.move_to_originals(tmp, kind.ext)
         doc = Document(
-            title=Path(name).stem,
+            title=title or Path(name).stem,
             original_filename=name,
             doc_type=doc_type,
             fy=fy,
@@ -125,7 +136,7 @@ async def upload_documents(
         audit.record(
             db,
             "upload",
-            user_id=user.id,
+            actor=user,
             entity="document",
             entity_id=doc.id,
             details={"filename": name, "sha256": tmp.sha256},
@@ -287,7 +298,7 @@ def retry_document(
     if doc.status == DocumentStatus.PROCESSING:
         raise HTTPException(status.HTTP_409_CONFLICT, "Document is being processed right now")
     doc.status, doc.error_message, doc.pages_done = DocumentStatus.UPLOADED, None, 0
-    audit.record(db, "retry", user_id=user.id, entity="document", entity_id=doc.id, request=request)
+    audit.record(db, "retry", actor=user, entity="document", entity_id=doc.id, request=request)
     db.commit()
     queued = enqueue_ingest(doc.id)
     return UploadResult(

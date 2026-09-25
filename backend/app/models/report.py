@@ -112,6 +112,8 @@ class QaLog(Entity):
 
 
 class Topic(Entity):
+    """One topic of one topic-model run (guide 11). The API shows the latest run."""
+
     __tablename__ = "topics"
 
     run_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)
@@ -119,7 +121,10 @@ class Topic(Entity):
     label: Mapped[str] = mapped_column(String(300))
     keywords: Mapped[list] = mapped_column(JSONB)
     size: Mapped[int] = mapped_column(Integer)
+    # {"year": {"2021": 4}, "session": {"2021-budget": 3}, "undated": 0}
     period_counts_json: Mapped[dict | None] = mapped_column(JSONB)
+    # [{"question_id": "...", "weight": 0.41, "keywords": ["coking", ...]}], strongest first
+    members_json: Mapped[list | None] = mapped_column(JSONB)
 
 
 class AuditLog(Entity):
@@ -127,6 +132,12 @@ class AuditLog(Entity):
 
     user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), index=True
+    )
+    # The unit this entry belongs to, so the audit log scopes like every other list.
+    # Null means "no unit" (a system action, or a failed login on an unknown email) and
+    # is visible only to CIL HQ / Ministry.
+    org_unit_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("org_units.id"), index=True
     )
     action: Mapped[str] = mapped_column(String(50), index=True)  # login, upload, review, ...
     entity: Mapped[str | None] = mapped_column(String(50))
