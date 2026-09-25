@@ -577,7 +577,6 @@ const hi: Partial<Record<LabelKey, string>> = {
   auditFilterFrom: "इस तारीख से",
   auditFilterTo: "इस तारीख तक",
   auditSystem: "सिस्टम",
-  auditDetails: "विवरण",
   actions: "कार्रवाइयाँ",
   saving: "सहेजा जा रहा है…",
   createUserTitle: "नया उपयोगकर्ता बनाएं",
