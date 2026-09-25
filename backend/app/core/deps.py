@@ -3,11 +3,12 @@
 from collections.abc import Callable
 
 import jwt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import Select, or_
 from sqlalchemy.orm import Session
 
+from app.core.cookies import ACCESS_COOKIE, SAFE_METHODS, csrf_refused, has_csrf_header
 from app.core.db import get_db
 from app.core.rbac import ALL_SCOPE_ORG_CODES, Permission, has_permission
 from app.core.security import decode_token
@@ -17,16 +18,28 @@ _bearer = HTTPBearer(auto_error=False)
 
 
 def get_current_user(
+    request: Request,
     creds: HTTPAuthorizationCredentials | None = Depends(_bearer),
     db: Session = Depends(get_db),
 ) -> User:
+    """The logged-in user, from a Bearer header (scripts) or the access cookie (browser).
+
+    A cookie-authenticated request that changes something must carry CSRF_HEADER; see
+    app/core/cookies.py for why.
+    """
     unauthorized = HTTPException(
         status.HTTP_401_UNAUTHORIZED, "Not logged in", {"WWW-Authenticate": "Bearer"}
     )
-    if creds is None:
-        raise unauthorized
+    if creds is not None:
+        token = creds.credentials
+    else:
+        token = request.cookies.get(ACCESS_COOKIE)
+        if token is None:
+            raise unauthorized
+        if request.method not in SAFE_METHODS and not has_csrf_header(request):
+            raise csrf_refused()
     try:
-        user_id = decode_token(creds.credentials, "access")
+        user_id = decode_token(token, "access")
     except jwt.InvalidTokenError:
         raise unauthorized from None
     user = db.get(User, user_id)
