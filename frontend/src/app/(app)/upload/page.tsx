@@ -123,8 +123,14 @@ export default function UploadPage() {
             accept={ACCEPT}
             className="hidden"
             onChange={(e) => {
-              setFiles((prev) => [...prev, ...Array.from(e.target.files ?? [])]);
+              // Read the list BEFORE clearing the input. setFiles' updater runs at
+              // render time, by which point e.target.files has already been emptied -
+              // so this appended nothing and choosing files through the picker did
+              // nothing at all. Clearing is still needed, or picking the same file
+              // twice fires no change event.
+              const chosen = Array.from(e.target.files ?? []);
               e.target.value = "";
+              setFiles((prev) => [...prev, ...chosen]);
             }}
           />
         </div>
