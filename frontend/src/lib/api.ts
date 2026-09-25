@@ -457,6 +457,59 @@ export function draftPqReply(body: PqDraftIn, idempotencyKey: string): Promise<P
   });
 }
 
+// --- Monthly report and briefing note drafts (guide 10.1, W5 / W6) ---
+
+export type DraftSource = {
+  id: string; // "S1": one document page; the marker used in lines and table cells
+  document_id: string;
+  document: string;
+  page: number;
+};
+
+export type DraftSection = {
+  id: string;
+  heading: string | null;
+  lines: string[];
+  bullets: boolean;
+  table: { columns: string[]; rows: string[][] } | null;
+  notes: string[];
+  removed_numbers: string[];
+};
+
+export type ReportDraftOut = {
+  report: ReportRow & {
+    content_json: {
+      text?: string;
+      kind?: "monthly" | "briefing";
+      title?: string;
+      subtitle?: string;
+      sections?: DraftSection[];
+      sources?: DraftSource[];
+      warnings?: string[];
+      remarks_by?: "model" | "rule";
+    };
+  };
+};
+
+function postDraft(path: string, body: object, idempotencyKey: string): Promise<ReportDraftOut> {
+  return api<ReportDraftOut>(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey },
+    body: JSON.stringify(body),
+  });
+}
+
+export function draftMonthlyReport(month: string, idempotencyKey: string): Promise<ReportDraftOut> {
+  return postDraft("/reports/monthly/draft", { month }, idempotencyKey);
+}
+
+export function draftBriefingNote(
+  body: { topic: string; from?: string | null; to?: string | null },
+  idempotencyKey: string,
+): Promise<ReportDraftOut> {
+  return postDraft("/reports/briefing/draft", body, idempotencyKey);
+}
+
 /** Download an authenticated file (e.g. a DOCX export) and hand it to the browser to save. */
 export async function downloadFile(path: string, filename: string, retry = true): Promise<void> {
   const headers = new Headers();
@@ -478,8 +531,8 @@ export async function downloadFile(path: string, filename: string, retry = true)
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
-export function exportReport(id: string, format: "docx" | "pdf"): Promise<void> {
-  return downloadFile(`/reports/${id}/export?format=${format}`, `pq-reply-${id.slice(0, 8)}.${format}`);
+export function exportReport(id: string, format: "docx" | "pdf", prefix = "pq-reply"): Promise<void> {
+  return downloadFile(`/reports/${id}/export?format=${format}`, `${prefix}-${id.slice(0, 8)}.${format}`);
 }
 
 export function getDashboardSummary(): Promise<DashboardSummary> {

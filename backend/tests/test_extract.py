@@ -82,7 +82,8 @@ def test_monthly_statistics_layout():
     assert facts[(Metric.COAL_PRODUCTION, "BCCL", "2024-12", None)].value == 3.55
     assert facts[(Metric.COAL_PRODUCTION, "CIL", "2024-12", None)].value == 72.37
     assert facts[(Metric.COAL_PRODUCTION, "CAPTIVE", "2024-12", None)].value == 18.89
-    assert facts[(Metric.PRODUCTION_TARGET, "ECL", None, None)].value == 5.43
+    # "Monthly Target" names no month: it takes the table's latest month (the FY 25 column).
+    assert facts[(Metric.PRODUCTION_TARGET, "ECL", "2024-12", None)].value == 5.43
     values = {f.value for f in facts.values()}
     assert not values & {93.17, 88.43, 33.82, 543.36, 1.0, 2.0}  # %, cumulative, serial no.
     assert len(facts) == 4 * 3
@@ -250,6 +251,23 @@ def test_annual_target_in_a_monthly_report_gets_the_financial_year():
     facts = by_key(facts_from_table(rows, title="Coal production during Dec'2024"))
     assert facts[(Metric.PRODUCTION_TARGET, "NCL", "FY 2024-25", None)].value == 139
     assert facts[(Metric.COAL_PRODUCTION, "NCL", "2024-12", None)].value == 12.70
+
+
+def test_annual_target_column_without_a_period_gets_the_fy_of_the_tables_month():
+    rows = [
+        ["Subs", "Annual\nTarget\n(MT)", "During Dec", None],
+        [None, None, "FY 25", "FY 24"],
+        ["Overall ECL", "54.00", "5.06", "4.62"],
+    ]
+    facts = by_key(facts_from_table(rows, title="Coal Production in mines Fig. in MT"))
+    assert facts[(Metric.PRODUCTION_TARGET, "ECL", "FY 2024-25", None)].value == 54.0
+    assert facts[(Metric.COAL_PRODUCTION, "ECL", "2024-12", None)].value == 5.06
+
+
+def test_target_without_any_month_in_the_table_keeps_no_period():
+    rows = [["Subsidiary", "Monthly Target"], ["NCL", "12.16"]]
+    (f,) = facts_from_table(rows, title="Coal production (MT)")
+    assert f.metric == Metric.PRODUCTION_TARGET and f.period is None
 
 
 def test_same_fact_twice_with_different_values_is_dropped():

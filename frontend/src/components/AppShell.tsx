@@ -47,6 +47,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     { href: "/admin/users", label: t("users"), perm: "manage_admin" },
     ...(canSeeReports ? [{ href: "/reports", label: t("reports") }] : []),
     ...(me?.permissions.includes("edit_reports") ? [{ href: "/pq-replies/new", label: t("newPqReply") }] : []),
+    ...(me?.permissions.includes("edit_reports")
+      ? [
+          { href: "/monthly-reports/new", label: t("newMonthlyReport") },
+          { href: "/briefing-notes/new", label: t("newBriefingNote") },
+        ]
+      : []),
   ];
   const nav = items.filter((n) => !n.perm || me?.permissions.includes(n.perm));
 
