@@ -25,10 +25,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     api<Me>("/me").then(setMe, (e: unknown) => {
-      if (e instanceof ApiError && e.status === 401) router.replace("/login");
-      else setError(e instanceof Error ? e.message : String(e));
+      // A 401 is already taking us to /login (with ?next=) from inside api().
+      // Redirecting again here would win the race and throw that ?next= away.
+      if (e instanceof ApiError && e.status === 401) return;
+      setError(e instanceof Error ? e.message : String(e));
     });
-  }, [router]);
+  }, []);
 
   const canSeeReports =
     me?.permissions.includes("edit_reports") ||
@@ -47,6 +49,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     { href: "/admin/users", label: t("users"), perm: "manage_admin" },
     ...(canSeeReports ? [{ href: "/reports", label: t("reports") }] : []),
     ...(me?.permissions.includes("edit_reports") ? [{ href: "/pq-replies/new", label: t("newPqReply") }] : []),
+    ...(me?.permissions.includes("edit_reports")
+      ? [
+          { href: "/monthly-reports/new", label: t("newMonthlyReport") },
+          { href: "/briefing-notes/new", label: t("newBriefingNote") },
+        ]
+      : []),
   ];
   const nav = items.filter((n) => !n.perm || me?.permissions.includes(n.perm));
 

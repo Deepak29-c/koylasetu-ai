@@ -1,6 +1,6 @@
 # KoylaSetu AI – full stack. Start everything with: docker compose up
 # First time only, pull the models:
-#   docker exec ollama ollama pull qwen2.5:7b-instruct
+#   docker exec ollama ollama pull qwen2.5:3b-instruct   (7b-instruct on a GPU machine)
 #   docker exec ollama ollama pull bge-m3
 
 services:

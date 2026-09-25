@@ -27,7 +27,7 @@ TITLE = "FY 25 FY 24 Fig. in MT Coal Production"
 
 
 def production(rows=None, title=TITLE):
-    """Monthly production facts (the target column has no single period in this title)."""
+    """Monthly production facts (the targets are left out)."""
     facts = facts_from_table([HEADER, *copy.deepcopy(rows or ROWS)], title=title)
     return [f for f in facts if f.metric == Metric.COAL_PRODUCTION]
 
@@ -115,10 +115,16 @@ def test_v07_duplicate_in_same_document():
 
 
 def test_v08_period_unknown():
+    # "Monthly Target" names no period itself; it now takes the table's latest month (the
+    # FY 25 "during Dec" column), so it is dated and V08 no longer fires for it. The targets
+    # also add up to the CIL target (V01 passes).
     facts = facts_from_table([HEADER, *ROWS], title=TITLE)
-    targets = [i for i, f in enumerate(facts) if f.metric == Metric.PRODUCTION_TARGET]
-    v08 = [i.fact for i in validate(facts, []) if i.rule == "V08"]
-    assert targets and v08 == targets  # "Monthly Target" under two FYs has no single period
+    targets = [f for f in facts if f.metric == Metric.PRODUCTION_TARGET]
+    assert targets and {f.period for f in targets} == {"2024-12"}
+    assert [i for i in validate(facts, []) if i.rule in ("V01", "V08")] == []
+    undated = [replace(t, period_type=None, period=None) for t in targets]
+    v08 = [i.fact for i in validate(undated, []) if i.rule == "V08"]
+    assert v08 == list(range(len(undated)))  # a target with no period at all is still V08
 
 
 def test_facts_without_a_period_are_only_v08():

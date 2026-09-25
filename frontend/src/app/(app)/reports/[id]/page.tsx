@@ -48,6 +48,9 @@ export default function ReportDetailPage() {
   const [text, setText] = useState("");
   // What the server currently holds. Anything else in the textarea is unsaved.
   const [savedText, setSavedText] = useState("");
+  const [restoredDraft, setRestoredDraft] = useState(false);
+  // Unsaved text survives an expired session, a closed tab or a crash (#45).
+  const stashKey = `ks_draft_${id}`;
 
   const load = useCallback(
     () =>
@@ -55,13 +58,21 @@ export default function ReportDetailPage() {
         ([r, v]) => {
           setReport(r);
           setVersions(v);
-          setText(r.content_json.text ?? "");
-          setSavedText(r.content_json.text ?? "");
+          const onServer = r.content_json.text ?? "";
+          setSavedText(onServer);
+          let stashed: string | null = null;
+          try {
+            stashed = sessionStorage.getItem(stashKey);
+          } catch {
+            // storage blocked: nothing to restore, carry on with the server's copy
+          }
+          setText(stashed !== null && stashed !== onServer ? stashed : onServer);
+          setRestoredDraft(stashed !== null && stashed !== onServer);
           setError(null);
         },
         (e: unknown) => setError(e instanceof ApiError ? e.message : String(e)),
       ),
-    [id],
+    [id, stashKey],
   );
 
   useEffect(() => {
@@ -142,6 +153,18 @@ export default function ReportDetailPage() {
   const dirty = text !== savedText;
 
   useEffect(() => {
+    // Wait for the report: on mount text and savedText are both "", which looks clean
+    // and would delete the stash before load() has had a chance to read it.
+    if (!report) return;
+    try {
+      if (dirty) sessionStorage.setItem(stashKey, text);
+      else sessionStorage.removeItem(stashKey);
+    } catch {
+      // storage blocked: the beforeunload warning below is the remaining safety net
+    }
+  }, [report, dirty, text, stashKey]);
+
+  useEffect(() => {
     if (!dirty) return;
     const warn = (e: BeforeUnloadEvent) => e.preventDefault();
     window.addEventListener("beforeunload", warn);
@@ -217,7 +240,10 @@ export default function ReportDetailPage() {
               {submitting ? t("submitting") : t("submitForApproval")}
             </button>
             {dirty ? (
-              <span className="text-sm text-amber-700">{t("editor.unsavedChanges")}</span>
+              <span className="text-sm text-amber-700">
+                {t("editor.unsavedChanges")}
+                {restoredDraft && ` — ${t("editor.draftRestored")}`}
+              </span>
             ) : (
               saved && <span className="text-sm text-green-700">{t("savedDraft")}</span>
             )}

@@ -464,8 +464,10 @@ def sources_from_links(rows: list[tuple[str, object, str, int]]) -> list[dict]:
         if key in seen:
             continue
         seen.add(key)
-        if n is not None and n not in numbered:
-            numbered[n] = {"id": f"S{n}", "document": title, "page": page}
+        if n is not None:
+            # Monthly reports / briefing notes number sources by document page, so several
+            # facts can share one number: list it once.
+            numbered.setdefault(n, {"id": f"S{n}", "document": title, "page": page})
         else:
             extra.append({"document": title, "page": page})
     top = max(numbered, default=0)

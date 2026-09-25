@@ -136,7 +136,7 @@ eval/pq_benchmark.jsonl   34 real Lok Sabha coal PQs with official answers and k
 
 5. **Frontend**: `npm install && npm run dev`.
 
-6. **LLM**: nothing is scripted for this yet (see open issue #14). You need Ollama installed separately, `ollama pull qwen2.5:3b-instruct` and `ollama pull bge-m3`, and `LLM_BASE_URL=http://localhost:11434` in `.env`. Without this, Q&A and embeddings silently no-op rather than erroring (check worker logs for "Embeddings skipped: model server not reachable").
+6. **LLM**: install Ollama, `ollama pull qwen2.5:3b-instruct` and `ollama pull bge-m3`, and set `LLM_BASE_URL=http://localhost:11434` in `.env` ([SETUP.md section 10](SETUP.md#10-local-ai-model-server-ollama-without-docker)). Then `cd backend && .venv/Scripts/python ../scripts/check_llm.py` confirms it answers. Without this, Q&A and embeddings silently no-op rather than erroring (check worker logs for "Embeddings skipped: model server not reachable").
 
 **Most of the above is now scripted** (PR #34): `bash scripts/setup_local.sh --seed` does the
 whole thing, and `scripts/setup_local_db.py` does the database half on any OS — see

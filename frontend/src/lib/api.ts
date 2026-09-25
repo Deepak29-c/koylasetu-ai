@@ -293,6 +293,38 @@ async function refreshTokens(): Promise<boolean> {
   return true;
 }
 
+/**
+ * Send an expired session back to the login screen, remembering where they were.
+ *
+ * Handled here rather than in each page: every screen called `api()` and only AppShell's
+ * first `/me` knew what a 401 meant, so everywhere else showed a dead red box with no way
+ * back (#45).
+ */
+let leavingForLogin = false;
+
+function toLoginAgain(): void {
+  if (typeof window === "undefined") return;
+  // Several requests can 401 at once (React re-invokes effects in development, and a
+  // page often loads two things). Without this guard the first call clears the token
+  // and navigates to /login?next=…, then the second sees no token, decides nobody was
+  // signed in, and navigates to a bare /login — aborting the first and losing `next`.
+  if (leavingForLogin) return;
+  leavingForLogin = true;
+  const { pathname, search } = window.location;
+  // Someone who never had a token is not resuming a session, they are just arriving.
+  // Only that case gets `next`, which is what makes the login page say "session ended".
+  const hadSession = read(ACCESS) !== null;
+  logout();
+  if (pathname === "/login") return; // already there; nothing to come back to
+  const resuming = hadSession && pathname !== "/";
+  // A full page load on purpose, not router.push: it drops every bit of in-memory state
+  // left over from the expired session. This module is not a component, so there is no
+  // router here anyway.
+  window.location.assign(
+    resuming ? `/login?next=${encodeURIComponent(pathname + search)}` : "/login",
+  );
+}
+
 export async function api<T>(path: string, init: RequestInit = {}, retry = true): Promise<T> {
   const headers = new Headers(init.headers);
   const token = read(ACCESS);
@@ -303,7 +335,10 @@ export async function api<T>(path: string, init: RequestInit = {}, retry = true)
   } catch {
     throw new ApiError(0, "Cannot reach the KoylaSetu server. Please check that the API is running.");
   }
-  if (res.status === 401 && retry && (await refreshTokens())) return api<T>(path, init, false);
+  if (res.status === 401 && retry) {
+    if (await refreshTokens()) return api<T>(path, init, false);
+    toLoginAgain();
+  }
   if (!res.ok) throw new ApiError(res.status, await errorMessage(res));
   if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
@@ -315,7 +350,10 @@ export async function fetchImageUrl(path: string, retry = true): Promise<string>
   const token = read(ACCESS);
   if (token) headers.set("Authorization", `Bearer ${token}`);
   const res = await fetch(`${API_URL}${path}`, { headers });
-  if (res.status === 401 && retry && (await refreshTokens())) return fetchImageUrl(path, false);
+  if (res.status === 401 && retry) {
+    if (await refreshTokens()) return fetchImageUrl(path, false);
+    toLoginAgain();
+  }
   if (!res.ok) throw new ApiError(res.status, await errorMessage(res));
   return URL.createObjectURL(await res.blob());
 }
@@ -461,6 +499,59 @@ export function draftPqReply(body: PqDraftIn, idempotencyKey: string): Promise<P
   });
 }
 
+// --- Monthly report and briefing note drafts (guide 10.1, W5 / W6) ---
+
+export type DraftSource = {
+  id: string; // "S1": one document page; the marker used in lines and table cells
+  document_id: string;
+  document: string;
+  page: number;
+};
+
+export type DraftSection = {
+  id: string;
+  heading: string | null;
+  lines: string[];
+  bullets: boolean;
+  table: { columns: string[]; rows: string[][] } | null;
+  notes: string[];
+  removed_numbers: string[];
+};
+
+export type ReportDraftOut = {
+  report: ReportRow & {
+    content_json: {
+      text?: string;
+      kind?: "monthly" | "briefing";
+      title?: string;
+      subtitle?: string;
+      sections?: DraftSection[];
+      sources?: DraftSource[];
+      warnings?: string[];
+      remarks_by?: "model" | "rule";
+    };
+  };
+};
+
+function postDraft(path: string, body: object, idempotencyKey: string): Promise<ReportDraftOut> {
+  return api<ReportDraftOut>(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey },
+    body: JSON.stringify(body),
+  });
+}
+
+export function draftMonthlyReport(month: string, idempotencyKey: string): Promise<ReportDraftOut> {
+  return postDraft("/reports/monthly/draft", { month }, idempotencyKey);
+}
+
+export function draftBriefingNote(
+  body: { topic: string; from?: string | null; to?: string | null },
+  idempotencyKey: string,
+): Promise<ReportDraftOut> {
+  return postDraft("/reports/briefing/draft", body, idempotencyKey);
+}
+
 /** Download an authenticated file (e.g. a DOCX export) and hand it to the browser to save. */
 export async function downloadFile(path: string, filename: string, retry = true): Promise<void> {
   const headers = new Headers();
@@ -482,8 +573,8 @@ export async function downloadFile(path: string, filename: string, retry = true)
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
-export function exportReport(id: string, format: "docx" | "pdf"): Promise<void> {
-  return downloadFile(`/reports/${id}/export?format=${format}`, `pq-reply-${id.slice(0, 8)}.${format}`);
+export function exportReport(id: string, format: "docx" | "pdf", prefix = "pq-reply"): Promise<void> {
+  return downloadFile(`/reports/${id}/export?format=${format}`, `${prefix}-${id.slice(0, 8)}.${format}`);
 }
 
 export function getDashboardSummary(): Promise<DashboardSummary> {
