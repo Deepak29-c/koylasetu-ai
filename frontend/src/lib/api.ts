@@ -116,6 +116,15 @@ export type ReviewItem = {
   created_at: string;
 };
 
+/** A fact a reviewer already decided (GET /review/decided); posting again changes it. */
+export type DecidedItem = Pick<ReviewItem, "fact" | "document_title" | "issues" | "related"> & {
+  action: "ACCEPT" | "EDIT" | "REJECT";
+  comment: string | null;
+  decided_by: string;
+  decided_at: string;
+  decisions: number;
+};
+
 export type ReviewSummary = {
   total_facts: number;
   auto_verified: number;
