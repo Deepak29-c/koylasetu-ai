@@ -136,7 +136,7 @@ async def upload_documents(
         audit.record(
             db,
             "upload",
-            user_id=user.id,
+            actor=user,
             entity="document",
             entity_id=doc.id,
             details={"filename": name, "sha256": tmp.sha256},
@@ -298,7 +298,7 @@ def retry_document(
     if doc.status == DocumentStatus.PROCESSING:
         raise HTTPException(status.HTTP_409_CONFLICT, "Document is being processed right now")
     doc.status, doc.error_message, doc.pages_done = DocumentStatus.UPLOADED, None, 0
-    audit.record(db, "retry", user_id=user.id, entity="document", entity_id=doc.id, request=request)
+    audit.record(db, "retry", actor=user, entity="document", entity_id=doc.id, request=request)
     db.commit()
     queued = enqueue_ingest(doc.id)
     return UploadResult(

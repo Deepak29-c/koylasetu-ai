@@ -71,6 +71,22 @@ facts), built in step 3.
 - `GET /documents/{id}/facts`; `python -m worker.extract <document id>` rebuilds the facts
   of a document processed before this existed
 
+**Topic explorer** (guide 11, Module E), Topics screen:
+- Processed PQ answer documents (`pq_answer`) are read into `parliament_questions`: house,
+  starred/unstarred, number, answer date, subject, MPs, question and parts, parsed from the
+  text (tolerates OCR slips; Hindi headers understood)
+- Cleaning: English + Hindi (Devanagari) words, numbers/punctuation dropped, English, Hindi and
+  PQ-wording stopwords (ministry, whether, details, state-wise, coal, …)
+- Topics: TF-IDF over words and two-word phrases + NMF (scikit-learn), deterministic; label =
+  top keywords; counts per year and per session (Budget / Monsoon / Winter); a small Hindi →
+  English glossary lets Hindi questions join the English topic
+- Word cloud as JSON (drawn in the browser), filtered by house / years / session / subsidiary,
+  from questions and/or org-scoped document text, cached by filter
+- Worker job on the `topics` queue: queued after every processed PQ document, re-builds when
+  `TOPICS_MIN_NEW_PQS` (default 5) new questions arrived; admin "Re-run" button
+  (`POST /topics/refresh`); by hand `python -m worker.topics --force`
+- `GET /topics/wordcloud?house=LS&from=2019&to=2025`, `GET /topics`, `GET /topics/{id}/questions`
+
 **Benchmark set** (guide 15.2, issue #16): `eval/pq_benchmark.jsonl` holds 34 real Lok Sabha
 coal questions (2018-2022) with the official written answer, the key figures in it (183 in
 all: value, unit and, for figures from tables or easy to confuse, an optional `label`), a topic
@@ -110,7 +126,7 @@ numbers need the local models pulled and the source documents loaded.
 - Seed script with demo users for all 6 roles
 
 Not built yet: validation rules + review queue + NUMERIC route (rest of step 3), reports,
-topics, and the Metrics screen that shows the benchmark results. Tables on scanned pages are not detected yet (OCR gives text only).
+and the Metrics screen that shows the benchmark results. Tables on scanned pages are not detected yet (OCR gives text only).
 PaddleOCR (`OCR_ENGINE=paddle`) currently falls back to Tesseract.
 
 ## Run with Docker (the normal way)

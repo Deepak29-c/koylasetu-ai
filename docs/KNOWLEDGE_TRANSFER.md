@@ -48,6 +48,7 @@ frontend/src/
   lib/i18n.tsx   every UI string, English + Hindi, keyed by LabelKey — never inline strings in pages
 
 docs/SETUP.md    Docker-first setup guide (works, but skips the non-Docker path's real complexity — see section 6)
+scripts/setup_local.sh, scripts/setup_local_db.py   one-shot local (non-Docker) setup
 data/sources.csv  100 real public files catalogued, 99 distinct (two PQ URLs serve the same file); download: scripts/fetch_sources.py, upload: scripts/load_sources.py — files themselves are git-ignored
 eval/pq_benchmark.jsonl   34 real Lok Sabha coal PQs with official answers and key figures (format checked by scripts/check_benchmark.py)
 ```
@@ -58,7 +59,10 @@ eval/pq_benchmark.jsonl   34 real Lok Sabha coal PQs with official answers and k
 - **Frontend**: Next.js (App Router) + Tailwind, plain `fetch` wrapped in `lib/api.ts` (no React Query / SWR — deliberately simple).
 - **Auth**: JWT access (30 min) + refresh (7 day) tokens, argon2 password hashing. Tokens live in `sessionStorage` (explicit TODO in code to move to httpOnly cookies before real deployment).
 - **LLM**: Ollama, local-only by default (`ALLOW_EXTERNAL_CALLS=false`). `backend/app/llm/client.py` is the only thing that talks to it.
-- **RBAC + org scoping**: every list/detail query in every router is wrapped in `scope_to_user()` (`app/core/deps.py`) — a user only sees their own org unit's rows, unless their unit is `CIL_HQ` or `MINISTRY` (see `ALL_SCOPE_ORG_CODES`), in which case they see everything. **Apply this on every new query** — it's not automatic, you have to call it.
+- **RBAC + org scoping**: every list/detail query in every router is wrapped in `scope_to_user()` (`app/core/deps.py`) — a user only sees their own org unit's rows, unless their unit is `CIL_HQ` or `MINISTRY` (see `ALL_SCOPE_ORG_CODES`), in which case they see everything. **Apply this on every new query** — it's not automatic, you have to call it. The audit
+  log was missed exactly this way and shipped unscoped for a while (see §9); when you add a
+  table that people will list, give it an `org_unit_id` at the same time as the model, not
+  later.
 
 ## 4. Data model — the tables that matter
 
@@ -134,7 +138,12 @@ eval/pq_benchmark.jsonl   34 real Lok Sabha coal PQs with official answers and k
 
 6. **LLM**: nothing is scripted for this yet (see open issue #14). You need Ollama installed separately, `ollama pull qwen2.5:3b-instruct` and `ollama pull bge-m3`, and `LLM_BASE_URL=http://localhost:11434` in `.env`. Without this, Q&A and embeddings silently no-op rather than erroring (check worker logs for "Embeddings skipped: model server not reachable").
 
-None of this is captured as a script yet — see open issue #13.
+**Most of the above is now scripted** (PR #34): `bash scripts/setup_local.sh --seed` does the
+whole thing, and `scripts/setup_local_db.py` does the database half on any OS — see
+`docs/SETUP.md` §"Local setup without Docker". The manual steps above are still worth
+reading, because the script `brew install`s Postgres and Redis, which is the one thing you
+must not do on Monterey or older. If you already have them, run `setup_local_db.py`
+directly against your existing Postgres instead of the shell script.
 
 ## 9. Other gotchas worth knowing before you touch things
 
@@ -142,6 +151,10 @@ None of this is captured as a script yet — see open issue #13.
 - **`useT()`'s `t` function is not memoized** — it's a new function reference on every render. Do **not** put `t` in a `useEffect` dependency array; it causes an infinite fetch loop (I found and fixed exactly this bug in the document detail page — see PR #27's description for the full story, even though that PR itself was later closed as superseded). If an effect needs a translated string for an error state, store an error *code*/*kind* in state and translate only at render time.
 - **The page-image endpoints need the Authorization header**, so a plain `<img src="...">` can't hit them directly — use `fetchImageUrl()` from `lib/api.ts`, which fetches with auth and hands back a blob URL. Remember to `URL.revokeObjectURL()` on cleanup.
 - **Approver has `edit_reports` too**, not just `approve_reports` (see the permission matrix in section 10) — an Approver can edit a report's content, not just approve/reject it. This is intentional, not a bug, per `app/core/rbac.py`.
+- **`audit_log` rows carry their own `org_unit_id`**, stamped by `services/audit.py:record()`
+  from the acting user — which is why `record()` takes the `User` and not just their id. A
+  null unit (a system action, or a failed login on an unknown email) is visible only to CIL
+  HQ / Ministry. If you add an audit call, pass `actor=`; don't reconstruct the row by hand.
 - **`i18n.tsx` is a single shared file everyone edits** — when adding a new feature, check for key-name collisions with unrelated features before assuming your key is free (e.g. `createButton` collided between the admin-users and reports-screen work and had to be split into `createButton` / `createReportButton`). Grep the file before naming a new generic-sounding key like `save`, `cancel`, `edit`.
 - **This repo has active parallel development.** Multiple people (including AI-assisted sessions) have been building simultaneously. Before starting new work: `git fetch && git log origin/dev --oneline -15` to see what's landed recently — more than once during this session, work that looked unclaimed turned out to already be in progress or freshly merged elsewhere (see PR #27 in the PR history: closed, not merged, because PR #30 had independently built the same screen, better integrated, while the other PR was in flight).
 
