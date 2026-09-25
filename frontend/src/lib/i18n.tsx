@@ -56,6 +56,7 @@ const en = {
   "conf.medium": "Check the sources",
   "conf.low": "Needs verification: a figure is not in the sources",
   unmatched: "Not found in sources",
+  unverified: "unverified",
   helpful: "Helpful",
   notHelpful: "Not helpful",
   thanks: "Thanks for the feedback",

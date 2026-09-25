@@ -24,6 +24,23 @@ The full technical spec is [docs/KoylaSetu_AI_Developer_Guide.docx](docs/KoylaSe
 
 Built so far:
 
+**Step 3b: NUMERIC route** (guide 9.1), numbers answered from the facts database:
+- Router (rules, no model call): NUMERIC / TEXTUAL / MIXED, and filters: metric, company /
+  state, category, coking, period (month, "upto" = year to date, FY, "as on" date),
+  subsidiary-wise / state-wise breakdown. Company and state names use the extractor's alias
+  map; the all-India total is `INDIA`; coking coal is only the `coking_coal_production` metric
+- The extractor skips year-to-date ("upto") figures and stores an "as on" date as its month,
+  so "upto" and "as on" questions find no facts yet and go to the text route
+- Parameterised facts query (the model never writes SQL) in a READ ONLY transaction with a 5 s
+  timeout, scoped to the user's units; REJECTED facts and unconvertible units never used,
+  VERIFIED preferred, unverified ones labelled (also in the plain fallback sentence). A period
+  that isn't in the database returns nothing rather than a different period
+- The model writes the sentence from DATA rows [F1]…; broken wording falls back to a plain
+  sentence built from the rows; more than 6 rows become a table; works without the model
+- No matching facts: falls back to the text route and says so in the answer
+- Ask screen: figures table under the answer; each figure links to its page with the exact
+  cell highlighted
+
 **Monthly report and briefing note first drafts** (guide 10.1, W5/W6), "New monthly report"
 and "New briefing note" screens:
 - `POST /reports/monthly/draft {month: "2024-12", subsidiaries?}` (Analyst / Approver): one
@@ -104,10 +121,8 @@ and "New briefing note" screens:
   open cited pages even though they can't browse the document list
 - Guard: the model server must be local unless `ALLOW_EXTERNAL_CALLS=true`
 
-Measured on the demo PC (CPU only, `qwen2.5:3b-instruct`): about 30-55 s per answer.
-Questions that need a figure from a table cell (e.g. "NCL production vs target") are not
-reliable on the text route with the 3B model; they go to the NUMERIC route (SQL on verified
-facts), built in step 3.
+Measured on the demo PC (CPU only, `qwen2.5:3b-instruct`): about 30-55 s for a text answer,
+1-8 s for a figures answer (NUMERIC route).
 
 **W1 ingestion pipeline** (guide 7.1 steps 1-9), runs in the worker:
 - PDF pages with a text layer: text blocks with position (bbox) + ruled tables, cells copied as text
@@ -192,8 +207,8 @@ numbers need the local models pulled and the source documents loaded.
 - Local model server (Ollama) without Docker: install notes per OS and `scripts/check_llm.py`,
   which checks the local-only guard, both models, a 1024-number embedding and a test answer
 
-Not built yet: NUMERIC route (step 3b, PR #36),
-and the Metrics screen that shows the benchmark results. Tables on scanned pages are not detected yet (OCR gives text only).
+Not built yet: LLM Text-to-SQL for questions the rules can't parse, and the Metrics screen
+that shows the benchmark results. Tables on scanned pages are not detected yet (OCR gives text only).
 PaddleOCR (`OCR_ENGINE=paddle`) currently falls back to Tesseract.
 
 ## Run with Docker (the normal way)

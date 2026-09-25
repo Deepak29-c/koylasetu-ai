@@ -232,3 +232,153 @@ def test_stray_leading_label_is_removed():
     assert qa.normalise_citations("[Table 1] The resource is 4,00,715.45 MT [C2].", 6) == (
         "The resource is 4,00,715.45 MT [C2]."
     )
+
+
+# --- NUMERIC / MIXED routes -----------------------------------------------------------------------
+
+
+def fact_row(ref, sub, metric, period, raw, status="VERIFIED", period_type="MONTH"):
+    from app.services.facts_query import FactRow
+
+    return FactRow(
+        ref,
+        uuid.uuid4(),
+        metric,
+        sub,
+        None,
+        None,
+        period_type,
+        period,
+        raw,
+        "MT",
+        float(raw),
+        status,
+        uuid.uuid4(),
+        "msg-dec24",
+        1,
+        [215, 433, 261, 447],
+    )
+
+
+NCL = [
+    fact_row("F1", "NCL", "coal_production", "2024-12", "12.70"),
+    fact_row("F2", "NCL", "production_target", "2024-12", "12.16"),
+]
+Q_NCL = "What was NCL coal production in December 2024 compared to its monthly target?"
+
+
+def ask_numeric(question, facts, answer, passages=()):
+    db = FakeDb()
+    seen = {}
+
+    def lookup(_db, _user, filters):
+        seen["filters"] = filters
+        return facts
+
+    result = qa.ask(
+        db,
+        USER,
+        question,
+        retrieve=lambda *_: list(passages),
+        llm=lambda s, u: seen.setdefault("prompt", u) and answer,
+        facts_lookup=lookup,
+    )
+    return result, db.added[0], seen
+
+
+def test_numeric_answer_is_cited_to_facts_and_grounded():
+    result, log, seen = ask_numeric(
+        Q_NCL, NCL, "NCL produced 12.70 MT in Dec 2024 [F1] against a target of 12.16 MT [F2]."
+    )
+    assert result.route == "NUMERIC" and result.confidence == "high"
+    assert [c.ref for c in result.citations] == ["F1", "F2"]
+    assert "[F1] NCL | coal production | Dec 2024 | 12.70 MT" in seen["prompt"]
+    assert "Do not calculate" in seen["prompt"]
+    assert result.table["rows"][0][:4] == ["NCL", "coal production", "Dec 2024", "12.70 MT"]
+    assert log.route.value == "NUMERIC" and "subsidiary=NCL" in log.sql
+
+
+def test_numeric_answer_with_a_calculated_or_wrong_figure_is_flagged():
+    result, _, _ = ask_numeric(Q_NCL, NCL, "NCL achieved 104.44% of its target [F1][F2].")
+    assert not result.grounded and result.unmatched_numbers == ["104.44"]
+
+
+def test_no_matching_facts_falls_back_to_text_and_says_so():
+    result, log, _ = ask_numeric(Q_NCL, [], "Stock was 7.2 MT [C1].", passages=PASSAGES)
+    assert result.route == "TEXTUAL" and log.sql is None
+    assert result.answer.startswith(qa.NO_FACTS_NOTE)
+
+
+def test_prompt_example_has_no_number_to_copy():
+    prompt = qa.build_prompt("q?", PASSAGES, NCL)
+    example = prompt[prompt.index("like this:") :].split(".")[0]
+    assert not any(ch.isdigit() for ch in example.replace("[F2]", ""))
+
+
+def test_many_figures_become_a_table_without_calling_the_model():
+    rows = [
+        fact_row(f"F{i}", s, "coal_production", "2024-12", f"{i}.5")
+        for i, s in enumerate(["ECL", "BCCL", "CCL", "NCL", "WCL", "SECL", "MCL", "NEC"], 1)
+    ]
+    result, _, seen = ask_numeric(
+        "Subsidiary-wise coal production in December 2024", rows, "unused"
+    )
+    assert "prompt" not in seen and "table below" in result.answer
+    assert len(result.citations) == 8 and result.grounded and len(result.table["rows"]) == 8
+
+
+def test_model_down_still_answers_figures():
+    def down(*_):
+        raise client.LlmUnavailable("no model")
+
+    db = FakeDb()
+    result = qa.ask(db, USER, Q_NCL, retrieve=lambda *_: [], llm=down, facts_lookup=lambda *_: NCL)
+    assert "12.70 MT [F1]" in result.answer and result.grounded
+
+
+def test_plain_sentence_labels_unverified_figures():
+    flagged = [fact_row("F1", "NCL", "coal_production", "2024-12", "12.70", status="FLAGGED")]
+    assert "12.70 MT (unverified) [F1]" in qa.template_answer(flagged)
+
+
+def test_unverified_facts_are_marked_for_the_model():
+    flagged = [fact_row("F1", "NCL", "coal_production", "2024-12", "12.70", status="FLAGGED")]
+    _, _, seen = ask_numeric(Q_NCL, flagged, "NCL: 12.70 MT [F1] (unverified).")
+    assert "12.70 MT (unverified)" in seen["prompt"]
+
+
+def test_mixed_question_gets_figures_and_passages():
+    q = "What was NCL production in December 2024 and what steps are taken to increase it?"
+    result, _, seen = ask_numeric(
+        q, NCL[:1], "12.70 MT [F1]. Coal stock rose to 16.74 MT [C2].", passages=PASSAGES
+    )
+    assert result.route == "MIXED" and {c.ref for c in result.citations} == {"F1", "C2"}
+    assert "DATA" in seen["prompt"] and "PASSAGES" in seen["prompt"]
+
+
+def test_bare_citation_maps_to_fact_when_only_facts_were_given():
+    assert (
+        qa.normalise_citations("12.70 MT [1].", passage_count=0, fact_count=2) == "12.70 MT [F1]."
+    )
+
+
+@pytest.mark.parametrize(
+    "garbled",
+    [
+        "[DATA] [F1]",
+        "[Odisha] [F1] [Odisha] as on 01.04.2025 | 55009.74 MT",
+        "MCL | coal despatch | April to Dec 2024 | [F1] 157.82 MT",
+        "Not found in the available documents.",
+        "NCL produced 12.70 MT.",  # no citation at all
+    ],
+)
+def test_garbled_model_wording_is_replaced_by_plain_sentence(garbled):
+    result, _, _ = ask_numeric(Q_NCL, NCL, garbled)
+    assert result.answer == qa.template_answer(NCL)
+    assert result.grounded and [c.ref for c in result.citations] == ["F1", "F2"]
+
+
+def test_good_model_wording_is_kept():
+    good = "NCL produced 12.70 MT in Dec 2024 [F1] against a target of 12.16 MT [F2]."
+    result, _, _ = ask_numeric(Q_NCL, NCL, good)
+    assert result.answer == good

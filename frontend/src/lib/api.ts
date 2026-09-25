@@ -40,19 +40,23 @@ export type UploadResult = {
 };
 
 export type Citation = {
-  id: string; // "C1": the marker used inside the answer text
-  chunk_id: string;
+  id: string; // "C1" (passage) or "F1" (figure): the marker used inside the answer text
+  kind: "passage" | "fact";
   document_id: string;
   document: string;
   page: number;
   bbox: number[] | null;
   text: string;
+  chunk_id: string | null;
+  fact_id: string | null;
+  status: string | null;
 };
 
 export type AskResult = {
   qa_id: string;
   answer: string;
   route: string;
+  table: { columns: string[]; rows: string[][] } | null;
   citations: Citation[];
   grounded: boolean;
   unmatched_numbers: string[];
