@@ -48,7 +48,7 @@ frontend/src/
   lib/i18n.tsx   every UI string, English + Hindi, keyed by LabelKey — never inline strings in pages
 
 docs/SETUP.md    Docker-first setup guide (works, but skips the non-Docker path's real complexity — see section 6)
-data/sources.csv  98 real public documents catalogued (download script: scripts/fetch_sources.py) — files themselves are git-ignored
+data/sources.csv  100 real public documents catalogued (download: scripts/fetch_sources.py, upload: scripts/load_sources.py) — files themselves are git-ignored
 eval/pq_benchmark.jsonl   empty — benchmark format is documented in eval/run_eval.py's docstring, no real data yet
 ```
 
