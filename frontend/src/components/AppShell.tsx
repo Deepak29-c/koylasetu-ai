@@ -36,6 +36,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     { href: "/upload", label: t("upload") },
     { href: "/documents", label: t("documents") },
     ...(me?.permissions.includes("view_audit") ? [{ href: "/audit", label: t("auditLog") }] : []),
+    ...(me?.permissions.includes("manage_admin") ? [{ href: "/admin/users", label: t("users") }] : []),
   ];
 
   return (
