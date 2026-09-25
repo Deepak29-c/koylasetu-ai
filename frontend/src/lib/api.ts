@@ -134,13 +134,17 @@ export type AuditFilters = {
   to_date?: string;
 };
 
-export function listAuditLog(filters: AuditFilters): Promise<AuditLogRow[]> {
+export const AUDIT_PAGE_SIZE = 100;
+
+/** One page of the audit log. The backend has supported limit/offset all along. */
+export function listAuditLog(filters: AuditFilters, offset = 0): Promise<AuditLogRow[]> {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(filters)) {
     if (value) params.set(key, value);
   }
-  const qs = params.toString();
-  return api<AuditLogRow[]>(`/audit${qs ? `?${qs}` : ""}`);
+  params.set("limit", String(AUDIT_PAGE_SIZE));
+  params.set("offset", String(offset));
+  return api<AuditLogRow[]>(`/audit?${params.toString()}`);
 }
 
 export function listAuditActions(): Promise<string[]> {
