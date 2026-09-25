@@ -153,13 +153,16 @@ export default function ReportDetailPage() {
   const dirty = text !== savedText;
 
   useEffect(() => {
+    // Wait for the report: on mount text and savedText are both "", which looks clean
+    // and would delete the stash before load() has had a chance to read it.
+    if (!report) return;
     try {
       if (dirty) sessionStorage.setItem(stashKey, text);
       else sessionStorage.removeItem(stashKey);
     } catch {
       // storage blocked: the beforeunload warning below is the remaining safety net
     }
-  }, [dirty, text, stashKey]);
+  }, [report, dirty, text, stashKey]);
 
   useEffect(() => {
     if (!dirty) return;

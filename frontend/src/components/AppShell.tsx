@@ -25,10 +25,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     api<Me>("/me").then(setMe, (e: unknown) => {
-      if (e instanceof ApiError && e.status === 401) router.replace("/login");
-      else setError(e instanceof Error ? e.message : String(e));
+      // A 401 is already taking us to /login (with ?next=) from inside api().
+      // Redirecting again here would win the race and throw that ?next= away.
+      if (e instanceof ApiError && e.status === 401) return;
+      setError(e instanceof Error ? e.message : String(e));
     });
-  }, [router]);
+  }, []);
 
   const canSeeReports =
     me?.permissions.includes("edit_reports") ||

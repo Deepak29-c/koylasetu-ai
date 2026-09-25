@@ -18,7 +18,10 @@ export default function LoginPage() {
 function LoginForm() {
   const router = useRouter();
   // Where the person was when their session expired, so they land back there.
-  const next = useSearchParams().get("next");
+  // Only an in-app path counts: anything else could bounce them off-site, and it
+  // must not make the page claim a session ended either.
+  const requested = useSearchParams().get("next");
+  const next = requested?.startsWith("/") && !requested.startsWith("//") ? requested : null;
   const { t, lang } = useT();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -31,8 +34,7 @@ function LoginForm() {
     setError(null);
     try {
       await login(email, password);
-      // Only ever an in-app path, never an absolute URL an attacker could supply.
-      router.replace(next?.startsWith("/") && !next.startsWith("//") ? next : "/");
+      router.replace(next ?? "/");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       setBusy(false);
