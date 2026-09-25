@@ -15,14 +15,17 @@ from __future__ import annotations
 
 import re
 import time
+import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.deps import scope_to_user
 from app.llm import client
-from app.models import QaLog, User
+from app.models import Chunk, Document, Fact, QaLog, User
 from app.models.enums import QaRoute
 from app.services import grounding
 from app.services.facts_query import FactRow, query_facts
@@ -292,3 +295,100 @@ def _citation_log(c: Source) -> dict:
                 "page": c.page_no}  # fmt: skip
     return {"ref": c.ref, "chunk_id": str(c.chunk_id), "document_id": str(c.document_id),
             "page": c.page_no}  # fmt: skip
+
+
+def _passage_again(db: Session, user: User, ref: str, chunk_id: str) -> Passage | None:
+    row = db.execute(
+        scope_to_user(
+            select(Chunk, Document.title)
+            .join(Document, Document.id == Chunk.document_id)
+            .where(Chunk.id == uuid.UUID(chunk_id)),
+            Document,
+            user,
+        )
+    ).first()
+    if row is None:
+        return None
+    chunk, title = row
+    return Passage(ref, chunk.id, chunk.document_id, title, chunk.page_no, chunk.bbox, chunk.text)
+
+
+def _fact_again(db: Session, user: User, ref: str, fact_id: str) -> FactRow | None:
+    row = db.execute(
+        scope_to_user(
+            select(Fact, Document.title)
+            .join(Document, Document.id == Fact.document_id)
+            .where(Fact.id == uuid.UUID(fact_id)),
+            Document,
+            user,
+        )
+    ).first()
+    if row is None:
+        return None
+    fact, title = row
+    return FactRow(
+        ref=ref,
+        fact_id=fact.id,
+        metric=fact.metric.value,
+        subsidiary=fact.subsidiary,
+        state=fact.state,
+        category=fact.category,
+        period_type=fact.period_type.value if fact.period_type else None,
+        period=fact.period,
+        value_raw=fact.value_raw,
+        unit=fact.unit,
+        value_std=float(fact.value_std) if fact.value_std is not None else float(fact.value),
+        status=fact.status.value,
+        document_id=fact.document_id,
+        document_title=title,
+        page_no=fact.page_no,
+        bbox=fact.bbox,
+    )
+
+
+def replay(db: Session, log: QaLog, user: User) -> Answer:
+    """Rebuild a past answer from its qa_logs row, so a citation can be opened and
+    come back to (#40).
+
+    Only the citation ids were logged, so the passage text, figures, document titles
+    and boxes are read back now - and scoped, so a document the person has since lost
+    access to simply drops out of the sources rather than leaking.
+
+    Everything else is derived the same way it was the first time, rather than stored:
+    the grounding check, the confidence label, the not-found flag and the figures table
+    all come from the answer text and the citations.
+    """
+    citations: list[Source] = []
+    facts: list[FactRow] = []
+    passages: list[Passage] = []
+    for logged in log.citations_json or []:
+        ref = logged.get("ref", "")
+        if logged.get("fact_id"):
+            fact = _fact_again(db, user, ref, logged["fact_id"])
+            if fact is not None:
+                facts.append(fact)
+                citations.append(fact)
+        elif logged.get("chunk_id"):
+            passage = _passage_again(db, user, ref, logged["chunk_id"])
+            if passage is not None:
+                passages.append(passage)
+                citations.append(passage)
+
+    text = log.answer or ""
+    sources = [p.text for p in passages] + [fact_line(f) for f in facts] + [log.question]
+    unmatched = grounding.check(text, sources)
+    not_found = NOT_FOUND.lower().rstrip(".") in text.lower() or NOT_FOUND_HI in text
+    return Answer(
+        qa_id=log.id,
+        answer=text,
+        route=log.route.value if log.route else QaRoute.TEXTUAL.value,
+        citations=citations,
+        grounded=bool(log.grounded),
+        unmatched_numbers=unmatched,
+        confidence=confidence_label(bool(log.grounded), len(citations), not_found),
+        not_found=not_found,
+        latency_ms=log.latency_ms or 0,
+        passages=passages,
+        facts=facts,
+        table=facts_table(facts) if facts else None,
+    )

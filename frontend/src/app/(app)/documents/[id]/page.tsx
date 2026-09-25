@@ -145,8 +145,12 @@ function Viewer() {
         </div>
       </div>
 
-      <Link href="/ask" className="text-sm text-brand underline">
-        ← {t("ask")}
+      {/* Carries the answer this page was opened from, so "back" restores it (#40). */}
+      <Link
+        href={search.get("from") ? `/ask?qa=${search.get("from")}` : "/ask"}
+        className="text-sm text-brand underline"
+      >
+        ← {search.get("from") ? t("qa.backToAnswer") : t("ask")}
       </Link>
     </div>
   );
