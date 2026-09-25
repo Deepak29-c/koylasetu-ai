@@ -569,6 +569,8 @@ export type PqDraftIn = {
   mp_name?: string | null;
   subject?: string | null;
   question_text: string;
+  /** When the reply has to be ready; the server uses the answer date when it is empty. */
+  due_date?: string | null;
 };
 
 export type PqDraftOut = {
