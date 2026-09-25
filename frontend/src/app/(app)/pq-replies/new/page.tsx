@@ -62,6 +62,12 @@ function Table({ table }: { table: NonNullable<PqBlock["table"]> }) {
   );
 }
 
+/** A random key per question (crypto.randomUUID needs https, so build one from random bytes). */
+function newKey(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 const EMPTY: PqDraftIn = {
   house: "LS",
   q_type: "unstarred",
@@ -79,16 +85,23 @@ export default function NewPqReplyPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState<PqDraftOut | null>(null);
+  // Same key while the question is unchanged, so pressing Generate again after a timeout
+  // returns the draft the server already made instead of creating a duplicate.
+  const [requestKey, setRequestKey] = useState<string | null>(null);
 
   if (!me.permissions.includes("edit_reports")) return <p className="text-gray-600">{t("noPermission")}</p>;
   const canExport = me.permissions.includes("export_reports");
 
   function set<K extends keyof PqDraftIn>(key: K, value: PqDraftIn[K]) {
     setForm((f) => ({ ...f, [key]: value }));
+    setRequestKey(null);
   }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (busy) return;
+    const key = requestKey ?? newKey();
+    setRequestKey(key);
     setBusy(true);
     setError(null);
     setDraft(null);
@@ -100,7 +113,9 @@ export default function NewPqReplyPage() {
           answer_date: form.answer_date || null,
           mp_name: form.mp_name || null,
           subject: form.subject || null,
-        }),
+          },
+          key,
+        ),
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -220,6 +235,11 @@ export default function NewPqReplyPage() {
           <p className="text-sm text-gray-600">
             {t("splitBy")}: {t(`split.${draft.split_method}` as LabelKey)}
           </p>
+          {(draft.report.content_json.warnings ?? []).map((w) => (
+            <p key={w} className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+              {w}
+            </p>
+          ))}
 
           {blocks.map((b) => (
             <div key={b.id} className="space-y-2 rounded border bg-white p-4">

@@ -1,14 +1,22 @@
 """Parliamentary Question reply builder (guide section 10.2).
 
-pasted PQ -> split into parts (a), (b)… / (क), (ख)… -> each part answered by the Q&A service
-(guide section 9: text passages, and verified facts once the NUMERIC route is in) -> one block
-per part {part, text, table, citations} -> tables with more than ~6 rows become Annexures ->
-content_json for the report editor, plus a plain-text rendering for the plain editor.
+pasted PQ -> split into parts (a), (b)… / (क), (ख)… / (i), (ii)… -> each part answered by the
+Q&A service (guide section 9: text passages, and verified facts once the NUMERIC route is in)
+-> one block per part {part, text, table, citations} -> tables with more than ~6 rows become
+Annexures -> content_json for the report editor, plus a plain-text rendering for the plain
+editor. `layout` turns a reply into lines and tables; the text, DOCX and PDF renderings all
+come from it, so they always agree.
 
-Core rule: numbers come only from the retrieved facts / passages. A sentence with a figure the
-grounding check cannot find in the sources is dropped, and a part with no source at all says
-"Information not found in available documents" instead of guessing. Nothing here sends the
-draft anywhere: it is saved as a DRAFT report for an Analyst to edit and an Approver to approve.
+Core rule: numbers come only from the retrieved facts / passages. Every sentence that contains
+a figure must cite a source, and the figure must be in the source it cites (the MP's question
+does not count as a source, although it often states figures). Other sentences are dropped and
+their figures listed on the block. A part with no source at all says "Information not found in
+available documents" instead of guessing. Nothing here sends the draft anywhere: it is saved as
+a DRAFT report for an Analyst to edit and an Approver to approve.
+
+Limits inherited from the grounding check (services/grounding.py): numbers written as words
+("ten") are not checked, units are not compared (12.16 MT passes against "12.16 lakh tonnes"),
+and a small number can match part of a larger token ("24" in "2023-24").
 
 Everything below except `draft_reply` is pure (no database, no model) so it can be unit-tested.
 """
@@ -24,22 +32,28 @@ from datetime import date
 
 from app.llm import client
 from app.models.enums import House, QuestionType
-from app.services import qa
+from app.services import grounding, qa
 
 NOT_FOUND_PART = "Information not found in available documents."
 NOT_FOUND_PART_HI = "उपलब्ध दस्तावेज़ों में जानकारी नहीं मिली।"
 MINISTRY = "MINISTRY OF COAL"
 MINISTER_LINE = "THE MINISTER OF COAL AND MINES (SHRI ____________________)"  # filled by hand
 DEFAULT_INTRO = "Will the Minister of COAL be pleased to state:"
+SOURCES_HEADING = "SOURCES (internal, remove before sending)"
+DRAFT_LINE = "DRAFT - for internal review. Not approved; not to be sent."
 ANNEXURE_ROWS = 6  # tables with more rows than this go to an Annexure (guide 10.2)
 MAX_PARTS = 10  # each part is one model call; a PQ rarely has more than (a)-(f)
 HOUSE_LABEL = {House.LOK_SABHA: "LOK SABHA", House.RAJYA_SABHA: "RAJYA SABHA"}
 
 _EN_LABELS = [chr(c) for c in range(ord("a"), ord("z") + 1)]
 _HI_LABELS = [chr(c) for c in range(0x0915, 0x093A)]  # क ख ग घ ङ च … ह, in Unicode order
+_ROMAN_LABELS = "i ii iii iv v vi vii viii ix x xi xii".split()
 _HI_SKIPPABLE = {"ङ", "ञ"}  # some Hindi PQs go (घ) -> (च)
-# "(a)" / "( ख )" at the start of the text, a line, or after whitespace / punctuation.
-_MARKER = re.compile(r"(?<![\w)])\(\s*([A-Za-z]|[क-ह])\s*\)")
+# "(a)" / "( ख )" / "(iii)" not glued to a word, or "a)" / "ii)" at the start or after a space.
+_LABEL = r"[A-Za-z]{1,4}|[क-ह]"
+_MARKER = re.compile(
+    rf"(?<![\w)])\(\s*(?P<p>{_LABEL})\s*\)|(?:^|(?<=[\s;:,.]))(?P<b>{_LABEL})\)", re.M
+)
 # Parts that only make sense with the previous one: "(b) if so, the details thereof".
 _DEPENDENT = re.compile(
     r"^\s*(?:if so|if not|if yes|if no|the details thereof|the reasons therefor|"
@@ -48,7 +62,13 @@ _DEPENDENT = re.compile(
 )
 _WORD = re.compile(r"[0-9A-Za-zऀ-ॿ]+")
 _LOCAL_REF = re.compile(r"\[\s*([CF]\d+)\s*\]")
-_SENTENCE = re.compile(r"(?<=[.!?।])\s+")
+_MARK = re.compile(r"\[S\d+\]")
+# End of a sentence: . ! ? or danda, with any citation markers that follow it (they belong to
+# the sentence before), then whitespace.
+_SENTENCE_END = re.compile(r"[.!?।]+(?:\s*\[\s*[CF]\d+\s*\])*(?=\s|$)")
+# Words that end with a dot but do not end a sentence (single letters as in "M.C.L." too).
+_ABBREVIATIONS = {"no", "nos", "rs", "sh", "shri", "smt", "dr", "viz", "etc", "vs", "approx"}
+_BULLET = re.compile(r"^\s*(?:[-•▪●*]|\d{1,2}[.)])\s+")
 _ROMAN = [(10, "X"), (9, "IX"), (5, "V"), (4, "IV"), (1, "I")]
 
 
@@ -57,7 +77,7 @@ _ROMAN = [(10, "X"), (9, "IX"), (5, "V"), (4, "IV"), (1, "I")]
 
 @dataclass
 class Part:
-    label: str  # "a", "b"… or "क", "ख"…; "" when the question has no parts
+    label: str  # "a", "b"…, "क", "ख"… or "i", "ii"…; "" when the question has no parts
     text: str
 
 
@@ -71,32 +91,39 @@ def _next_labels(labels: list[str], i: int) -> set[str]:
     return accepted
 
 
+def _in_sequence(matches: list[re.Match], labels: list[str]) -> list[tuple[re.Match, str]]:
+    accepted: list[tuple[re.Match, str]] = []
+    pos = 0
+    for m in matches:
+        label = (m.group("p") or m.group("b")).lower()
+        if label in _next_labels(labels, pos):
+            accepted.append((m, label))
+            pos = labels.index(label) + 1
+    return accepted
+
+
 def split_by_markers(question: str) -> tuple[str, list[Part]]:
-    """Split on (a), (b)… or (क), (ख)… that appear in order. Markers out of sequence (a "(i)"
-    inside part (b), a "(c)" quoted in the text) are left inside the part text.
+    """Split on (a), (b)… / a), b)…, (क), (ख)… or (i), (ii)… that appear in order, starting
+    from the first label. Markers out of sequence (an "(i)" inside part (b), a "(c)" quoted in
+    the text) stay inside the part text; letters win over roman numerals, so "(a) … (i) … (ii)
+    … (b)" is split on the letters only.
 
     Returns (intro, parts); parts is empty when the question has no usable markers."""
     matches = list(_MARKER.finditer(question))
-    for labels in (_EN_LABELS, _HI_LABELS):
-        accepted: list[re.Match] = []
-        pos = 0
-        for m in matches:
-            label = m.group(1).lower()
-            if label in _next_labels(labels, pos):
-                accepted.append(m)
-                pos = labels.index(label) + 1
-        if accepted and accepted[0].group(1).lower() == labels[0]:
+    for labels in (_EN_LABELS, _HI_LABELS, _ROMAN_LABELS):
+        accepted = _in_sequence(matches, labels)
+        if accepted:
             break
     else:
         return question.strip(), []
 
-    intro = question[: accepted[0].start()].strip()
+    intro = question[: accepted[0][0].start()].strip()
     parts: list[Part] = []
-    for i, m in enumerate(accepted):
-        end = accepted[i + 1].start() if i + 1 < len(accepted) else len(question)
+    for i, (m, label) in enumerate(accepted):
+        end = accepted[i + 1][0].start() if i + 1 < len(accepted) else len(question)
         text = " ".join(question[m.end() : end].split())
         if text:
-            parts.append(Part(m.group(1).lower(), text))
+            parts.append(Part(label, text))
     return intro, parts
 
 
@@ -116,28 +143,32 @@ SPLIT_SCHEMA = {
 }
 
 
-def _mostly_from(text: str, source: str, share: float = 0.8) -> bool:
-    """True if at least `share` of the words in `text` occur in `source` (guards against the
-    model inventing a part)."""
-    words = [w.lower() for w in _WORD.findall(text)]
-    known = {w.lower() for w in _WORD.findall(source)}
-    return bool(words) and sum(w in known for w in words) / len(words) >= share
+def _norm(text: str) -> str:
+    return " ".join(text.split())
 
 
 def split_with_llm(question: str, llm: Callable[..., str] = client.chat) -> list[Part]:
-    """Fallback when there are no markers (guide 10.2). Returns [] when the model is down, gives
-    bad JSON, or returns fewer than two parts that are copied from the question."""
+    """Fallback when there are no markers (guide 10.2). Each part must be copied word for word
+    from the question, in order (the parts are printed as the MP's question, so a reworded or
+    reordered part is not acceptable). Returns [] when the model is down, gives bad JSON, or any
+    part fails that test, so the caller answers the whole question as one part."""
     try:
         raw = llm(SPLIT_SYSTEM, f"QUESTION:\n{question}", json_schema=SPLIT_SCHEMA)
         items = json.loads(raw).get("parts", [])
     except (client.LlmUnavailable, ValueError, AttributeError):
         return []
-    texts = [" ".join(str(it.get("text", "")).split()) for it in items if isinstance(it, dict)]
-    texts = [t for t in texts if t and _mostly_from(t, question)]
+    texts = [_norm(str(it.get("text", ""))) for it in items if isinstance(it, dict)]
+    texts = [t for t in texts if t]
+    source, pos = _norm(question), 0
+    for t in texts:
+        found = source.find(t, pos)
+        if found < 0:
+            return []
+        pos = found + len(t)
     if len(texts) < 2:
         return []
     labels = _HI_LABELS if qa.is_hindi(question) else _EN_LABELS
-    return [Part(labels[i], t) for i, t in enumerate(texts[:MAX_PARTS])]
+    return [Part(labels[i], t) for i, t in enumerate(texts)]
 
 
 def split_question(
@@ -146,11 +177,11 @@ def split_question(
     """Returns (intro, parts, method) with method "markers", "llm" or "single"."""
     intro, parts = split_by_markers(question)
     if parts:
-        return intro, parts[:MAX_PARTS], "markers"
+        return intro, parts, "markers"
     parts = split_with_llm(question, llm)
     if parts:
         return "", parts, "llm"
-    return "", [Part("", " ".join(question.split()))], "single"
+    return "", [Part("", _norm(question))], "single"
 
 
 def part_query(subject: str | None, parts: list[Part], i: int) -> str:
@@ -162,7 +193,90 @@ def part_query(subject: str | None, parts: list[Part], i: int) -> str:
     return f"{subject.strip()}: {text}" if subject and subject.strip() else text
 
 
-# --- 2. turning Q&A answers into blocks --------------------------------------------------------
+# --- 2. keeping only sourced figures ------------------------------------------------------------
+
+
+def _ends_sentence(text: str, dot_at: int) -> bool:
+    """False for "M.C.L." / "No." / "Rs." style dots and when the next word is lower case."""
+    if text[dot_at] != ".":
+        return True
+    word = re.search(r"([A-Za-z]+)$", text[:dot_at])
+    if word and (len(word.group(1)) == 1 or word.group(1).lower() in _ABBREVIATIONS):
+        return False
+    rest = text[dot_at + 1 :].lstrip()
+    rest = _LOCAL_REF.sub("", rest).lstrip() if rest.startswith("[") else rest
+    return not (rest[:1].islower())
+
+
+def sentences(line: str) -> list[str]:
+    """Split one line into sentences; citation markers stay with the sentence they follow."""
+    out, start = [], 0
+    for m in _SENTENCE_END.finditer(line):
+        if _ends_sentence(line, m.start()):
+            out.append(line[start : m.end()].strip())
+            start = m.end()
+    out.append(line[start:].strip())
+    return [s for s in out if s]
+
+
+def split_lines(text: str) -> list[str]:
+    """Lines of an answer; inline bullets ("… • NCL 12.7 • MCL 15.1") become lines too."""
+    text = re.sub(r"\s+([•▪●])\s+", r"\n\1 ", text)
+    return [ln.strip() for ln in text.splitlines() if ln.strip()]
+
+
+def source_text(item: object) -> str:
+    """The text a figure is checked against: a passage's text, or a fact's DATA line."""
+    if getattr(item, "fact_id", None) is None:
+        return getattr(item, "text", "")
+    fact_line = getattr(qa, "fact_line", None)  # comes with the NUMERIC route
+    if fact_line is not None:
+        try:
+            return fact_line(item)
+        except (AttributeError, KeyError, TypeError, ValueError):
+            pass
+    fields = ("who", "metric", "period_text", "period", "value_raw", "value_std", "value")
+    return " ".join(str(getattr(item, f, "")) for f in fields)
+
+
+def keep_sourced(text: str, local: dict[str, object]) -> tuple[str, list[str]]:
+    """Drop every sentence that has a figure but no valid citation, or a figure that is not in
+    the sources it cites. The question is not a source. Bullet lines without their own citation
+    use the citations of their list. Returns (kept text, removed figures as written)."""
+    lines = split_lines(text)
+    list_refs: dict[int, list[str]] = {}
+    run: list[int] = []
+    for i, ln in enumerate(lines + [""]):
+        if i < len(lines) and _BULLET.match(ln):
+            run.append(i)
+            continue
+        refs = [r for j in run for r in _LOCAL_REF.findall(lines[j]) if r in local]
+        list_refs |= {j: refs for j in run}
+        run = []
+
+    kept_lines, removed = [], []
+    for i, ln in enumerate(lines):
+        kept = []
+        for s in sentences(ln):
+            values = grounding.extract_values(s)
+            if not values:
+                kept.append(s)
+                continue
+            refs = [r for r in _LOCAL_REF.findall(s) if r in local] or list_refs.get(i, [])
+            if not refs:
+                removed += [v.token for v in values]
+                continue
+            bad = grounding.check(s, [source_text(local[r]) for r in dict.fromkeys(refs)])
+            if bad:
+                removed += bad
+            else:
+                kept.append(s)
+        if kept:
+            kept_lines.append(" ".join(kept))
+    return "\n".join(kept_lines), removed
+
+
+# --- 3. turning Q&A answers into blocks --------------------------------------------------------
 
 
 @dataclass
@@ -232,23 +346,6 @@ def roman(n: int) -> str:
     return out
 
 
-def drop_unsupported(text: str, unmatched: list[str]) -> tuple[str, list[str]]:
-    """Remove sentences that contain a figure the grounding check could not find in the
-    sources. Returns (kept text, removed figures)."""
-    if not unmatched:
-        return text, []
-    kept, removed = [], []
-    for sentence in _SENTENCE.split(text):
-        hits = [
-            u for u in unmatched if u and re.search(rf"(?<![\d.,]){re.escape(u)}(?!\d)", sentence)
-        ]
-        if hits:
-            removed.extend(hits)
-        else:
-            kept.append(sentence)
-    return " ".join(kept).strip(), removed
-
-
 def build_block(
     part: Part,
     answer: object,
@@ -260,14 +357,15 @@ def build_block(
     """One reply block from one Q&A answer. `annexure_no` is the number the next Annexure
     would get; the block records its Annexure label if its table needs one.
 
-    `answer` is a qa.Answer. `table` and `facts` come with the NUMERIC route and are read with
-    getattr so this works with and without it."""
+    `answer` is a qa.Answer. `passages`, `table` and `facts` are read with getattr so this
+    works with and without the NUMERIC route."""
     label = part.label or "reply"
     block_id = f"part-{label}"
     not_found_text = NOT_FOUND_PART_HI if hindi else NOT_FOUND_PART
     local: dict[str, object] = {}
-    for item in list(getattr(answer, "citations", [])) + list(getattr(answer, "facts", [])):
-        local.setdefault(item.ref, item)
+    for key in ("citations", "passages", "facts"):
+        for item in getattr(answer, key, None) or []:
+            local.setdefault(item.ref, item)
 
     text = answer.answer.strip()
     note = None
@@ -275,7 +373,7 @@ def build_block(
     if no_facts_note and text.startswith(no_facts_note):
         text = text[len(no_facts_note) :].strip()
         note = no_facts_note.rstrip(": ").strip() + "."
-    text, removed = drop_unsupported(text, list(getattr(answer, "unmatched_numbers", [])))
+    text, removed = keep_sourced(text, local)
 
     table = getattr(answer, "table", None)
     table_refs = {c for row in (table or {}).get("rows", []) for c in row if c in local}
@@ -302,7 +400,7 @@ def build_block(
         return f"[{mapping[m.group(1)]}]" if m.group(1) in mapping else ""
 
     text = _LOCAL_REF.sub(renumber, text)
-    text = re.sub(r"\s+([.,;])", r"\1", re.sub(r"[ \t]{2,}", " ", text)).strip()
+    text = re.sub(r"[ \t]+([.,;।])", r"\1", re.sub(r"[ \t]{2,}", " ", text)).strip()
 
     annexure = None
     if table:
@@ -331,7 +429,9 @@ def build_block(
 
 
 def citation_links(blocks: list[dict], sources: list[dict]) -> list[dict]:
-    """One report_citations row per (block, source): which fact / chunk backs which part."""
+    """One report_citations row per (block, source): which fact / chunk backs which part. The
+    location ends with the reply-wide source number (":S3"), so the sources list can be rebuilt
+    in the same order from these rows."""
     by_id = {s["id"]: s for s in sources}
     links = []
     for b in blocks:
@@ -348,7 +448,33 @@ def citation_links(blocks: list[dict], sources: list[dict]) -> list[dict]:
     return links
 
 
-# --- 3. header and plain-text rendering -------------------------------------------------------
+def sources_from_links(rows: list[tuple[str, object, str, int]]) -> list[dict]:
+    """Rebuild the sources list from report_citations rows (location_in_report, source id,
+    document title, page), numbered as in the reply: by the ":S3" in the location. Rows
+    without a number (written some other way) come after, numbered on."""
+    numbered: dict[int, dict] = {}
+    extra: list[dict] = []
+    seen: set = set()
+    keyed = []
+    for where, key, title, page in rows:
+        m = re.search(r":S(\d+)$", where or "")
+        keyed.append((int(m.group(1)) if m else None, key, title, page))
+    keyed.sort(key=lambda r: (r[0] is None, r[0] or 0))
+    for n, key, title, page in keyed:
+        if key in seen:
+            continue
+        seen.add(key)
+        if n is not None and n not in numbered:
+            numbered[n] = {"id": f"S{n}", "document": title, "page": page}
+        else:
+            extra.append({"document": title, "page": page})
+    top = max(numbered, default=0)
+    for i, s in enumerate(extra, start=top + 1):
+        s["id"] = f"S{i}"
+    return [numbered[n] for n in sorted(numbered)] + extra
+
+
+# --- 4. header and layout ----------------------------------------------------------------------
 
 
 def format_date(d: date | None) -> str:
@@ -385,69 +511,179 @@ def question_heading(header: dict) -> str:
     return f"{kind} QUESTION NO. {header['q_no'] or '____'}"
 
 
-def annexure_caption(header: dict, part: str) -> str:
+def header_lines(header: dict) -> list[str]:
+    return [
+        "GOVERNMENT OF INDIA",
+        header["ministry"],
+        header["house_label"],
+        question_heading(header),
+        f"TO BE ANSWERED ON {header['answer_date_text']}",
+    ]
+
+
+def asker_line(header: dict) -> str:
+    return f"{header['q_no'] or '____'}. {header['mp_name'].upper() or 'SHRI/SMT. ____'}:"
+
+
+def _question_ref(header: dict) -> str:
     house = header["house_label"].title()
     kind = header["q_type"].title()
+    return f"{house} {kind} Question No. {header['q_no'] or '____'}"
+
+
+def annexure_caption(header: dict, part: str) -> str:
     of_part = f"part ({part}) of " if part else ""
     return (
-        f"Referred to in reply to {of_part}{house} {kind} Question No. {header['q_no'] or '____'} "
+        f"Referred to in reply to {of_part}{_question_ref(header)} "
         f"for answer on {header['answer_date_text']}"
     )
+
+
+def statement(header: dict, blocks: list[dict]) -> tuple[str, str] | None:
+    """Starred questions are answered "(a) to (c): A Statement is laid on the Table of the
+    House." followed by the Statement. Returns (lead line, Statement caption) or None."""
+    if header["q_type"] != QuestionType.STARRED.value or not blocks:
+        return None
+    first, last = blocks[0]["part"], blocks[-1]["part"]
+    if not first:
+        parts, of_parts = "", ""
+    elif first == last:
+        parts, of_parts = f"({first}): ", f"part ({first}) of "
+    else:
+        parts, of_parts = f"({first}) to ({last}): ", f"parts ({first}) to ({last}) of "
+    asked = f" asked by {header['mp_name']}" if header["mp_name"] else ""
+    caption = (
+        f"Statement referred to in reply to {of_parts}{_question_ref(header)} "
+        f"for answer on {header['answer_date_text']}{asked}"
+    )
+    return f"{parts}A Statement is laid on the Table of the House.", caption
 
 
 def part_prefix(label: str) -> str:
     return f"({label}) " if label else ""
 
 
+def removed_note(figures: list[str]) -> str:
+    return f"[figure(s) removed as unsupported: {', '.join(dict.fromkeys(figures))}]"
+
+
+# Layout items: ("line", text, style) | ("table", table) | ("pagebreak",)
+# Styles: title (centred bold), bold, normal, caption (centred small), note (red small, drafts
+# only), small (sources list).
+
+
+def layout(
+    header: dict,
+    blocks: list[dict],
+    sources: list[dict],
+    *,
+    internal_notes: bool,
+    warnings: list[str] | tuple[str, ...] = (),
+) -> list[tuple]:
+    """The official PQ-reply layout (guide 10.1). `internal_notes` adds the DRAFT line,
+    warnings and removed-figure notes (unapproved exports only; never in the editor text)."""
+    items: list[tuple] = []
+
+    def line(text: str = "", style: str = "normal") -> None:
+        items.append(("line", text, style))
+
+    if internal_notes:
+        line(DRAFT_LINE, "note")
+        for w in warnings:
+            line(w, "note")
+    for h in header_lines(header):
+        line(h, "title")
+    line()
+    line(header["subject"].upper(), "title")
+    line()
+    line(asker_line(header), "bold")
+    line(header["intro"])
+    for b in blocks:
+        line(f"{part_prefix(b['part'])}{b['question']}")
+    line()
+    line("ANSWER", "title")
+    line(header["minister_line"], "title")
+    line()
+    st = statement(header, blocks)
+    if st:
+        line(st[0])
+        line()
+        line("STATEMENT", "title")
+        line(st[1], "caption")
+        line()
+    for b in blocks:
+        line(f"({b['part']}): {b['text']}" if b["part"] else b["text"])
+        if internal_notes and b.get("removed_numbers"):
+            line(removed_note(b["removed_numbers"]), "note")
+        if internal_notes and b.get("note"):
+            line(b["note"], "note")
+        if b.get("table") and not b.get("annexure"):
+            items.append(("table", b["table"]))
+        line()
+    for b in blocks:
+        if b.get("annexure"):
+            items.append(("pagebreak",))
+            line(b["annexure"].upper(), "title")
+            line(annexure_caption(header, b["part"]), "caption")
+            items.append(("table", b["table"]))
+    if sources:
+        line()
+        line(SOURCES_HEADING, "bold")
+        for s in sources:
+            line(f"[{s['id']}] {s['document']}, page {s['page']}", "small")
+    return items
+
+
 def table_lines(table: dict) -> list[str]:
-    return [" | ".join(table["columns"])] + [" | ".join(r) for r in table["rows"]]
+    return [" | ".join(map(str, table["columns"]))] + [
+        " | ".join(map(str, r)) for r in table["rows"]
+    ]
+
+
+def items_to_text(items: list[tuple]) -> str:
+    lines: list[str] = []
+    for item in items:
+        if item[0] == "line":
+            lines.append(item[1])
+        elif item[0] == "table":
+            lines += table_lines(item[1]) + [""]
+        else:
+            lines.append("")
+    text = re.sub(r"\n{3,}", "\n\n", "\n".join(lines))
+    return text.strip() + "\n"
 
 
 def render_text(header: dict, blocks: list[dict], sources: list[dict]) -> str:
     """Plain rendering of the whole reply, for the plain-text report editor."""
-    lines = [
-        "GOVERNMENT OF INDIA",
-        header["ministry"],
-        header["house_label"],
-        question_heading(header),
-        f"TO BE ANSWERED ON {header['answer_date_text']}",
-        "",
-        header["subject"].upper(),
-        "",
-        f"{header['q_no'] or '____'}. {header['mp_name'].upper() or 'SHRI/SMT. ____'}:",
-        header["intro"],
-    ]
-    lines += [f"{part_prefix(b['part'])}{b['question']}" for b in blocks]
-    lines += ["", "ANSWER", header["minister_line"], ""]
-    for b in blocks:
-        prefix = f"({b['part']}): " if b["part"] else ""
-        lines.append(f"{prefix}{b['text']}")
-        if b["table"] and not b["annexure"]:
-            lines += table_lines(b["table"])
-        lines.append("")
-    for b in blocks:
-        if b["annexure"]:
-            lines += [b["annexure"].upper(), annexure_caption(header, b["part"])]
-            lines += table_lines(b["table"]) + [""]
-    if sources:
-        lines.append("SOURCES (internal, remove before sending)")
-        lines += [f"[{s['id']}] {s['document']}, page {s['page']}" for s in sources]
-    return "\n".join(lines).strip() + "\n"
+    return items_to_text(layout(header, blocks, sources, internal_notes=False))
 
 
-# --- 4. the whole draft ------------------------------------------------------------------------
+# --- 5. the whole draft ------------------------------------------------------------------------
 
 
 @dataclass
 class Draft:
     intro: str
-    parts: list[Part]
+    parts: list[Part]  # every part of the question, including any beyond MAX_PARTS
     split_method: str
     content: dict  # content_json of the report
     links: list[dict]  # report_citations rows
 
 
-def build_content(header: dict, parts: list[Part], answers: list[object], hindi: bool) -> Draft:
+def too_many_parts_warning(total: int) -> str:
+    return (
+        f"The question has {total} parts; only the first {MAX_PARTS} were answered. "
+        "Answer the remaining parts by hand."
+    )
+
+
+def build_content(
+    header: dict,
+    parts: list[Part],
+    answers: list[object],
+    hindi: bool,
+    warnings: list[str] | None = None,
+) -> Draft:
     """Pure: parts + their Q&A answers -> content_json and citation links."""
     registry = SourceRegistry()
     blocks: list[dict] = []
@@ -462,6 +698,7 @@ def build_content(header: dict, parts: list[Part], answers: list[object], hindi:
         "header": header,
         "blocks": blocks,
         "sources": sources,
+        "warnings": list(warnings or []),
         "text": render_text(header, blocks, sources),
     }
     return Draft(header["intro"], parts, "", content, citation_links(blocks, sources))
@@ -480,13 +717,18 @@ def draft_reply(
     question_text: str,
     ask: Callable[..., object] | None = None,
     llm: Callable[..., str] | None = None,
+    check_model: Callable[[], None] | None = None,
 ) -> Draft:
     """Split the PQ and answer every part through the Q&A service's public entry point, so the
     same retrieval, routing and grounding rules apply as on the Ask screen. Raises
-    client.LlmUnavailable if the model server is down."""
+    client.LlmUnavailable up front if the model server or model is not there, rather than
+    saving a draft in which every part says "not found"."""
+    (check_model or client.ensure_available)()
     ask = ask or qa.ask
     intro, parts, method = split_question(question_text, llm or client.chat)
-    answers = [ask(db, user, part_query(subject, parts, i)) for i in range(len(parts))]
+    answered = parts[:MAX_PARTS]
+    warnings = [too_many_parts_warning(len(parts))] if len(parts) > MAX_PARTS else []
+    answers = [ask(db, user, part_query(subject, parts, i)) for i in range(len(answered))]
     header = build_header(
         house=house,
         q_type=q_type,
@@ -496,6 +738,7 @@ def draft_reply(
         subject=subject,
         intro=intro,
     )
-    draft = build_content(header, parts, answers, qa.is_hindi(question_text))
+    draft = build_content(header, answered, answers, qa.is_hindi(question_text), warnings)
+    draft.parts = parts
     draft.split_method = method
     return draft

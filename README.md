@@ -27,19 +27,30 @@ Built so far:
 **PQ reply first draft** (guide 10.1-10.2), "New PQ reply" screen:
 - `POST /pq-replies/draft` (Analyst / Approver): paste house, question no., date, MP, subject
   and question text; it is saved as a `parliament_questions` row and split into parts on
-  (a), (b)… or (क), (ख)… (the local model splits it only when there are no markers, and
-  its parts must be copied from the question)
+  (a), (b)… / a), b)…, (क), (ख)… or (i), (ii)… (the local model splits it only when there
+  are no markers, and its parts must be exact copies from the question). The model is
+  checked first; if it is not there, nothing is saved (503). An `Idempotency-Key` header
+  makes a retry return the draft already made
 - Each part is answered through the Q&A service (`qa.ask`), so the same retrieval, routing
-  and grounding rules apply; a sentence with a figure not found in the sources is dropped,
-  and a part with no source says "Information not found in available documents"
+  and grounding rules apply. Then, stricter than the Ask screen: every sentence with a figure
+  must cite a source and the figure must be in the source it cites (the MP's question does
+  not count, although it often states figures); other sentences are dropped and their
+  figures listed on the part. A part with no source says "Information not found in
+  available documents"
+- Grounding limits (from `services/grounding.py`): numbers written as words are not checked,
+  units are not compared (12.16 MT passes against "12.16 lakh tonnes"), and a small number
+  can match part of a token ("24" in "2023-24")
 - Saved as a DRAFT `pq_reply` report: `content_json` has the header, one block per part
   `{part, text, table, citations}`, a reply-wide sources list (S1, S2…: document + page)
   and a plain `text` rendering for the report editor; tables with more than 6 rows become
   Annexure-I, II…; every source is a `report_citations` row pointing at its fact or chunk
 - `GET /reports/{id}/export?format=docx|pdf` (export permission): official layout (Ministry
   header, house, Starred/Unstarred Question No., date, subject, MP and parts, ANSWER, Minister
-  line placeholder, answers, annexures, internal sources list). DOCX via python-docx, PDF via
-  PyMuPDF (Hindi renders); unapproved reports carry a DRAFT line. Nothing is sent anywhere
+  line placeholder, "A Statement is laid on the Table" + Statement for starred questions,
+  answers, annexures, internal sources list). DOCX via python-docx, PDF via PyMuPDF (Hindi
+  renders); unapproved reports carry a DRAFT line, warnings and removed-figure notes. A reply
+  edited in the plain-text editor is exported from its text without repeating the header or
+  sources. Nothing is sent anywhere
 
 **Step 2: Q&A with citations** (guide section 9, text route), Ask screen + document viewer:
 - Hybrid search: Postgres full-text + pgvector (BGE-M3), merged with reciprocal rank fusion,

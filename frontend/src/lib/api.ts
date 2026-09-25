@@ -372,14 +372,22 @@ export type PqDraftOut = {
   pq_id: string;
   split_method: "markers" | "llm" | "single";
   report: ReportRow & {
-    content_json: { text?: string; blocks?: PqBlock[]; sources?: PqSource[]; header?: Record<string, string> };
+    content_json: {
+      text?: string;
+      blocks?: PqBlock[];
+      sources?: PqSource[];
+      header?: Record<string, string>;
+      warnings?: string[];
+    };
   };
 };
 
-export function draftPqReply(body: PqDraftIn): Promise<PqDraftOut> {
+/** Generation takes minutes. The same idempotencyKey on a retry (e.g. after a proxy timeout)
+ * returns the draft already made instead of creating a second one. */
+export function draftPqReply(body: PqDraftIn, idempotencyKey: string): Promise<PqDraftOut> {
   return api<PqDraftOut>("/pq-replies/draft", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey },
     body: JSON.stringify(body),
   });
 }
