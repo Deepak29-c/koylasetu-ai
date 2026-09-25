@@ -1,7 +1,9 @@
 """PQ reply generator and report export (guide sections 10.1-10.3).
 
-POST /pq-replies/draft     paste a PQ -> ParliamentQuestion + DRAFT pq_reply Report + citations
-GET  /reports/{id}/export  DOCX or PDF in the official layout
+POST /pq-replies/draft          paste a PQ -> ParliamentQuestion + DRAFT pq_reply Report + citations
+POST /pq-replies/parts          the parts (a), (b)… the question splits into, before generating
+POST /pq-replies/question-text  the plain text of a PQ file (PDF, Word, text), to fill the form
+GET  /reports/{id}/export       DOCX or PDF in the official layout
 
 The review workflow (edit, submit, approve, return, versions) is in app.api.reports. Nothing
 here sends a reply anywhere: the draft is saved for an Analyst to edit and an Approver to
@@ -12,12 +14,25 @@ import logging
 import uuid
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Header,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    UploadFile,
+    status,
+)
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.db import get_db
 from app.core.deps import require, scope_to_user
+from app.core.errors import CodedError
 from app.core.rbac import Permission
 from app.llm.client import LlmUnavailable
 from app.models import (
@@ -31,8 +46,15 @@ from app.models import (
     User,
 )
 from app.models.enums import ReportChangeKind, ReportStatus, ReportType
-from app.schemas.pq_reply import PqDraftIn, PqDraftOut
-from app.services import audit, pq_reply, report_export
+from app.schemas.pq_reply import (
+    PqDraftIn,
+    PqDraftOut,
+    PqPartOut,
+    PqPartsIn,
+    PqPartsOut,
+    PqQuestionTextOut,
+)
+from app.services import audit, pq_reply, question_file, report_export, storage
 
 log = logging.getLogger(__name__)
 
@@ -130,7 +152,7 @@ def create_draft(
         pq_id=pq.id,
         org_unit_id=user.org_unit_id,
         created_by=user.id,
-        due_date=body.answer_date,
+        due_date=body.due_date or body.answer_date,
     )
     db.add(report)
     db.flush()
@@ -165,6 +187,63 @@ def create_draft(
     db.commit()
     db.refresh(report)
     return _out(report)
+
+
+@router.post("/parts", response_model=PqPartsOut)
+def preview_parts(
+    body: PqPartsIn,
+    _user: User = Depends(require(Permission.EDIT_REPORTS)),
+) -> PqPartsOut:
+    """The parts the question splits into on its own markers, shown under the question box
+    while it is typed. The model is not asked here; with no markers, generation may still
+    split the question with the model, or answer it as one."""
+    intro, parts = pq_reply.split_by_markers(body.question_text)
+    return PqPartsOut(
+        method="markers" if parts else "single",
+        intro=intro if parts else "",
+        parts=[PqPartOut(part=p.label, text=p.text) for p in parts],
+        max_parts=pq_reply.MAX_PARTS,
+    )
+
+
+@router.post("/question-text", response_model=PqQuestionTextOut)
+async def question_text(
+    file: UploadFile = File(...),
+    _user: User = Depends(require(Permission.EDIT_REPORTS)),
+) -> PqQuestionTextOut:
+    """Read the question out of a PDF, Word or text file. The file is not kept."""
+    name = file.filename or "upload"
+    try:
+        tmp = await storage.save_temp(file)
+    except storage.FileTooLarge:
+        limit = get_settings().max_upload_mb
+        raise CodedError(
+            status.HTTP_413_CONTENT_TOO_LARGE, "pq_file_too_large", f"Larger than {limit} MB"
+        ) from None
+    try:
+        text, truncated = question_file.read_question(tmp.path, name)
+    except question_file.NotAllowed:
+        raise CodedError(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "pq_file_type",
+            "Not an allowed file type for a question (PDF, Word DOCX or a .txt text file)",
+        ) from None
+    except question_file.Unreadable:
+        raise CodedError(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "pq_file_unreadable",
+            "The file could not be opened. It may be damaged or password-protected.",
+        ) from None
+    except question_file.NoText:
+        raise CodedError(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "pq_file_no_text",
+            "No text was found in the file. A scanned PDF has no text layer; "
+            "paste the question instead.",
+        ) from None
+    finally:
+        tmp.path.unlink(missing_ok=True)
+    return PqQuestionTextOut(filename=name, text=text, truncated=truncated)
 
 
 def _pq_header(db: Session, report: Report) -> dict | None:

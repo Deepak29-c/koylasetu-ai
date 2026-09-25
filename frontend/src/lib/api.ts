@@ -314,33 +314,59 @@ async function unreachable(): Promise<ApiError> {
   return new ApiError(0, UNREACHABLE, "unreachable");
 }
 
-// Tokens live in sessionStorage for the prototype (cleared when the tab closes).
-// TODO before deployment: move to httpOnly cookies set by the API.
-const ACCESS = "ks_access";
-const REFRESH = "ks_refresh";
+// The API keeps the login in httpOnly cookies that page scripts cannot read, so nothing
+// here ever sees a token. Every request sends the cookies (credentials: "include") and
+// CSRF_HEADER, which the API requires on cookie-authenticated requests that change data.
+const CSRF_HEADER = "X-Requested-With";
+const CSRF_VALUE = "koylasetu";
 
-function read(key: string): string | null {
+// Not a token: only a note that this browser signed in, so that toLoginAgain can tell an
+// ended session from a first visit. localStorage, like the cookies, is shared by every tab.
+const SIGNED_IN = "ks_signed_in";
+
+function signedIn(): boolean {
   try {
-    return sessionStorage.getItem(key);
+    return localStorage.getItem(SIGNED_IN) !== null;
   } catch {
-    return null;
+    return false;
   }
 }
 
-function saveTokens(t: { access_token: string; refresh_token: string }) {
+function rememberSignedIn(): void {
   try {
-    sessionStorage.setItem(ACCESS, t.access_token);
-    sessionStorage.setItem(REFRESH, t.refresh_token);
-  } catch {
-    // storage blocked: the user will simply be asked to log in again
-  }
-}
-
-export function logout() {
-  try {
-    sessionStorage.removeItem(ACCESS);
-    sessionStorage.removeItem(REFRESH);
+    localStorage.setItem(SIGNED_IN, "1");
   } catch {}
+}
+
+function forgetSignedIn(): void {
+  try {
+    localStorage.removeItem(SIGNED_IN);
+  } catch {}
+}
+
+// Tokens used to be kept in sessionStorage; drop any a tab still holds.
+if (typeof window !== "undefined") {
+  try {
+    sessionStorage.removeItem("ks_access");
+    sessionStorage.removeItem("ks_refresh");
+  } catch {}
+}
+
+/** `init` with the login cookies and the CSRF header added. */
+function withAuth(init: RequestInit = {}): RequestInit {
+  const headers = new Headers(init.headers);
+  headers.set(CSRF_HEADER, CSRF_VALUE);
+  return { ...init, headers, credentials: "include" };
+}
+
+/** Ask the API to remove the login cookies. Callers then go to /login. */
+export async function logout(): Promise<void> {
+  forgetSignedIn();
+  try {
+    await fetch(`${API_URL}/auth/logout`, withAuth({ method: "POST" }));
+  } catch {
+    // server unreachable: the cookies expire on their own
+  }
 }
 
 /** The server's own explanation of a failed response, with its translatable code if any. */
@@ -355,17 +381,18 @@ async function responseError(res: Response): Promise<ApiError> {
   return new ApiError(res.status, `Request failed (${res.status})`);
 }
 
-async function refreshTokens(): Promise<boolean> {
-  const refresh_token = read(REFRESH);
-  if (!refresh_token) return false;
-  const res = await fetch(`${API_URL}/auth/refresh`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ refresh_token }),
-  });
-  if (!res.ok) return false;
-  saveTokens(await res.json());
-  return true;
+// Several requests can 401 at once; they share one refresh call.
+let refreshing: Promise<boolean> | null = null;
+
+/** Swap the refresh cookie for new login cookies. */
+function refreshTokens(): Promise<boolean> {
+  refreshing ??= fetch(`${API_URL}/auth/refresh`, withAuth({ method: "POST" }))
+    .then((res) => res.ok)
+    .catch(() => false)
+    .finally(() => {
+      refreshing = null;
+    });
+  return refreshing;
 }
 
 /**
@@ -380,16 +407,16 @@ let leavingForLogin = false;
 function toLoginAgain(): void {
   if (typeof window === "undefined") return;
   // Several requests can 401 at once (React re-invokes effects in development, and a
-  // page often loads two things). Without this guard the first call clears the token
-  // and navigates to /login?next=…, then the second sees no token, decides nobody was
+  // page often loads two things). Without this guard the first call forgets the session
+  // and navigates to /login?next=…, then the second sees no session, decides nobody was
   // signed in, and navigates to a bare /login — aborting the first and losing `next`.
   if (leavingForLogin) return;
   leavingForLogin = true;
   const { pathname, search } = window.location;
-  // Someone who never had a token is not resuming a session, they are just arriving.
-  // Only that case gets `next`, which is what makes the login page say "session ended".
-  const hadSession = read(ACCESS) !== null;
-  logout();
+  // Someone who never signed in is not resuming a session, they are just arriving.
+  // Only a resumed session gets `next`, which is what makes the login page say "session ended".
+  const hadSession = signedIn();
+  forgetSignedIn();
   if (pathname === "/login") return; // already there; nothing to come back to
   const resuming = hadSession && pathname !== "/";
   // A full page load on purpose, not router.push: it drops every bit of in-memory state
@@ -401,12 +428,9 @@ function toLoginAgain(): void {
 }
 
 export async function api<T>(path: string, init: RequestInit = {}, retry = true): Promise<T> {
-  const headers = new Headers(init.headers);
-  const token = read(ACCESS);
-  if (token) headers.set("Authorization", `Bearer ${token}`);
   let res: Response;
   try {
-    res = await fetch(`${API_URL}${path}`, { ...init, headers });
+    res = await fetch(`${API_URL}${path}`, withAuth(init));
   } catch {
     throw await unreachable();
   }
@@ -421,10 +445,7 @@ export async function api<T>(path: string, init: RequestInit = {}, retry = true)
 
 /** Fetch an authenticated image (e.g. a page render) as an object URL for <img src>. */
 export async function fetchImageUrl(path: string, retry = true): Promise<string> {
-  const headers = new Headers();
-  const token = read(ACCESS);
-  if (token) headers.set("Authorization", `Bearer ${token}`);
-  const res = await fetch(`${API_URL}${path}`, { headers });
+  const res = await fetch(`${API_URL}${path}`, withAuth());
   if (res.status === 401 && retry) {
     if (await refreshTokens()) return fetchImageUrl(path, false);
     toLoginAgain();
@@ -548,6 +569,8 @@ export type PqDraftIn = {
   mp_name?: string | null;
   subject?: string | null;
   question_text: string;
+  /** When the reply has to be ready; the server uses the answer date when it is empty. */
+  due_date?: string | null;
 };
 
 export type PqDraftOut = {
@@ -644,12 +667,9 @@ function serverFilename(res: Response, fallback: string): string {
 }
 
 export async function downloadFile(path: string, filename: string, retry = true): Promise<void> {
-  const headers = new Headers();
-  const token = read(ACCESS);
-  if (token) headers.set("Authorization", `Bearer ${token}`);
   let res: Response;
   try {
-    res = await fetch(`${API_URL}${path}`, { headers });
+    res = await fetch(`${API_URL}${path}`, withAuth());
   } catch {
     throw await unreachable();
   }
@@ -692,13 +712,22 @@ export function getDashboardSummary(): Promise<DashboardSummary> {
 }
 
 export async function login(email: string, password: string): Promise<void> {
-  const res = await fetch(`${API_URL}/auth/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password }),
-  });
+  // The reply sets the login cookies; the tokens in its body are for scripts and are not kept.
+  let res: Response;
+  try {
+    res = await fetch(
+      `${API_URL}/auth/login`,
+      withAuth({
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      }),
+    );
+  } catch {
+    throw await unreachable();
+  }
   if (!res.ok) throw await responseError(res);
-  saveTokens(await res.json());
+  rememberSignedIn();
 }
 
 export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
@@ -718,8 +747,8 @@ export function uploadDocuments(
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("POST", `${API_URL}/documents`);
-    const token = read(ACCESS);
-    if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+    xhr.withCredentials = true;
+    xhr.setRequestHeader(CSRF_HEADER, CSRF_VALUE);
     xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total);
     xhr.onerror = () => {
       unreachable().then(reject);
