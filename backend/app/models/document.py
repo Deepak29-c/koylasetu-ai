@@ -23,6 +23,10 @@ EMBED_DIM = 1024  # BGE-M3
 
 class Document(Entity):
     __tablename__ = "documents"
+    # A file is unique *within a unit*, not globally: two units may each hold the same
+    # public circular, and each needs its own copy to search and extract facts from.
+    # The bytes are not duplicated - storage is content-addressed by sha256.
+    __table_args__ = (UniqueConstraint("org_unit_id", "sha256"),)
 
     title: Mapped[str] = mapped_column(String(500))
     original_filename: Mapped[str] = mapped_column(String(500))
@@ -37,7 +41,7 @@ class Document(Entity):
     file_path: Mapped[str] = mapped_column(String(1000))
     mime_type: Mapped[str] = mapped_column(String(100))
     size_bytes: Mapped[int] = mapped_column(Integer)
-    sha256: Mapped[str] = mapped_column(String(64), unique=True)
+    sha256: Mapped[str] = mapped_column(String(64), index=True)
     status: Mapped[DocumentStatus] = mapped_column(
         str_enum(DocumentStatus, "document_status"), default=DocumentStatus.UPLOADED, index=True
     )
@@ -96,4 +100,7 @@ class ExtractedTable(Entity):
     page_no: Mapped[int] = mapped_column(Integer)
     bbox: Mapped[list[float] | None] = mapped_column(JSONB)
     rows_json: Mapped[list] = mapped_column(JSONB)  # raw cell grid, list of rows
+    # Same shape as rows_json: the [x0, y0, x1, y1] of each cell (null where unknown), so a
+    # fact can highlight the exact cell it came from.
+    cell_bboxes: Mapped[list | None] = mapped_column(JSONB)
     table_title: Mapped[str | None] = mapped_column(Text)

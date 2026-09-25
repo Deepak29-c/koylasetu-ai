@@ -35,6 +35,8 @@ class FactStatus(StrEnum):
 class PeriodType(StrEnum):
     FY = "FY"  # "FY 2023-24"
     MONTH = "MONTH"  # "2024-12"
+    YTD = "YTD"  # "2024-12" = April up to and including December of that FY
+    AS_ON = "AS_ON"  # "2025-04-01" = stock figure on a date (coal resources)
 
 
 class Metric(StrEnum):

@@ -12,14 +12,12 @@ import logging
 import uuid
 from dataclasses import dataclass
 
-import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.config import get_settings
+from app.llm.client import LlmUnavailable, embed_texts
 from app.models import Chunk
-from app.models.document import EMBED_DIM
-from worker.parse import BBox, Block
+from worker.parse import BBox, Block, PageResult, Table
 
 log = logging.getLogger(__name__)
 
@@ -78,28 +76,50 @@ def chunk_blocks(blocks: list[Block], max_words: int = MAX_WORDS) -> list[ChunkD
     return chunks
 
 
-class EmbeddingUnavailable(Exception):
-    pass
+def _inside(block: Block, box: BBox) -> bool:
+    """True if the block's centre lies inside `box`."""
+    if block.bbox is None:
+        return False
+    cx, cy = (block.bbox[0] + block.bbox[2]) / 2, (block.bbox[1] + block.bbox[3]) / 2
+    return box[0] <= cx <= box[2] and box[1] <= cy <= box[3]
 
 
-def embed_texts(texts: list[str]) -> list[list[float]]:
-    s = get_settings()
-    try:
-        res = httpx.post(
-            f"{s.llm_base_url.rstrip('/')}/api/embed",
-            json={"model": s.embed_model, "input": texts},
-            timeout=300,
-        )
-    except httpx.HTTPError as e:
-        raise EmbeddingUnavailable(f"model server not reachable at {s.llm_base_url}: {e}") from e
-    if res.status_code != 200:
-        raise EmbeddingUnavailable(f"model server error {res.status_code}: {res.text[:200]}")
-    vectors = res.json().get("embeddings", [])
-    if len(vectors) != len(texts) or any(len(v) != EMBED_DIM for v in vectors):
-        raise EmbeddingUnavailable(
-            f"expected {len(texts)} vectors of size {EMBED_DIM} from {s.embed_model}"
-        )
-    return vectors
+def _row(cells: list[str]) -> str:
+    return "| " + " | ".join(c.replace("\n", " ").replace("|", "/") for c in cells) + " |"
+
+
+def table_chunks(table: Table, page_no: int, max_words: int = MAX_WORDS) -> list[ChunkDraft]:
+    """A table as a grid of rows, so the model can see which number is in which row and
+    column. Long tables are split into row groups; each piece repeats the header row."""
+    rows = [r for r in table.rows if any(c.strip() for c in r)]
+    if not rows:
+        return []
+    title = f"Table on page {page_no}" + (f": {table.title}" if table.title else "")
+    header, body = _row(rows[0]), [_row(r) for r in rows[1:]]
+    budget = max(max_words - len(title.split()) - len(header.split()), 20)
+    chunks, piece, words = [], [], 0
+    for line in body or [""]:
+        n = len(line.split())
+        if piece and words + n > budget:
+            chunks.append(ChunkDraft("\n".join([title, header, *piece]), table.bbox))
+            piece, words = [], 0
+        if line:
+            piece.append(line)
+            words += n
+    chunks.append(ChunkDraft("\n".join([title, header, *piece]), table.bbox))
+    return chunks
+
+
+def page_chunks(page: PageResult, max_words: int = MAX_WORDS) -> list[ChunkDraft]:
+    """Text chunks + table chunks for one page. Text blocks that sit inside a detected table
+    are dropped: PyMuPDF also returns table cells as loose text, one value per line, which
+    loses the row/column structure the table chunk keeps."""
+    boxes = [t.bbox for t in page.tables if t.bbox]
+    text_blocks = [b for b in page.blocks if not any(_inside(b, box) for box in boxes)]
+    chunks = chunk_blocks(text_blocks, max_words)
+    for table in page.tables:
+        chunks.extend(table_chunks(table, page.page_no, max_words))
+    return chunks
 
 
 def embed_chunks(db: Session, chunks: list[Chunk]) -> bool:
@@ -108,7 +128,7 @@ def embed_chunks(db: Session, chunks: list[Chunk]) -> bool:
         batch = chunks[start : start + EMBED_BATCH]
         try:
             vectors = embed_texts([c.text for c in batch])
-        except EmbeddingUnavailable as e:
+        except LlmUnavailable as e:
             log.warning("Embeddings skipped: %s", e)
             return False
         for chunk, vector in zip(batch, vectors, strict=True):

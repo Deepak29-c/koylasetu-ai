@@ -7,9 +7,16 @@
 data/*
 !data/.gitkeep
 !data/sources.csv
+# Local upload storage when STORAGE_DIR is a relative path under backend/ (e.g. non-Docker
+# setups): the root-anchored "data/*" rule above does not cover this nested path.
+backend/data/
 storage/
 *.gguf
 *.safetensors
+# Benchmark runs (eval/run_eval.py): the raw replies and the citation sheet hold text from our
+# documents; summary.json and report.md hold only ids, counts and labels and may be committed.
+eval/results/*/results.json
+eval/results/*/citation_check.csv
 
 # Python
 __pycache__/

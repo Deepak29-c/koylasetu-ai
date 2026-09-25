@@ -24,7 +24,10 @@ class Fact(Entity):
     value: Mapped[float] = mapped_column(Numeric)  # parsed, in the original unit
     unit: Mapped[str | None] = mapped_column(String(32))  # original unit
     value_std: Mapped[float | None] = mapped_column(Numeric)  # in the metric's standard unit
-    category: Mapped[str | None] = mapped_column(String(32))  # Measured / Indicated / Inferred
+    # Measured / Indicated / Inferred / Total, optionally "· Coking" for one coal type
+    category: Mapped[str | None] = mapped_column(String(64))
+    # Row and column headers the value was read under, e.g. "NCL · Production during Dec / FY 25"
+    label: Mapped[str | None] = mapped_column(Text)
     status: Mapped[FactStatus] = mapped_column(
         str_enum(FactStatus, "fact_status"), default=FactStatus.EXTRACTED, index=True
     )

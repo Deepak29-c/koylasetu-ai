@@ -16,16 +16,23 @@ from fastapi import (
     status,
 )
 from PIL import Image
-from sqlalchemy import select
+from sqlalchemy import exists, select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.db import get_db
 from app.core.deps import require, scope_to_user, sees_all_units
 from app.core.rbac import Permission, Role
-from app.models import Chunk, Document, ExtractedTable, Page, User
-from app.models.enums import DocType, DocumentStatus
-from app.schemas.document import ChunkOut, DocumentOut, PageOut, TableOut, UploadResult
+from app.models import Chunk, Document, ExtractedTable, Fact, Page, ReviewActionLog, User
+from app.models.enums import DocType, DocumentStatus, Metric
+from app.schemas.document import (
+    ChunkOut,
+    DocumentOut,
+    FactOut,
+    PageOut,
+    TableOut,
+    UploadResult,
+)
 from app.services import audit, file_types, storage
 from app.services.normalise import normalise_fy
 from app.services.queue import enqueue_ingest
@@ -42,10 +49,15 @@ async def upload_documents(
     language: str = Form("en"),
     is_public: bool = Form(False),
     source_url: str | None = Form(None),
+    title: str | None = Form(None),
     user: User = Depends(require(Permission.UPLOAD_DOCUMENTS)),
     db: Session = Depends(get_db),
 ) -> list[UploadResult]:
-    """Upload one or many files. Each file gets its own result (created / duplicate / rejected)."""
+    """Upload one or many files. Each file gets its own result (created / duplicate / rejected).
+
+    `title` is optional and only allowed for a single file (e.g. the bulk loader sends the
+    official title from data/sources.csv); otherwise the title is the file name.
+    """
     if is_public and not (sees_all_units(user) or Role.ADMIN in user.roles):
         raise HTTPException(
             status.HTTP_403_FORBIDDEN, "Only CIL HQ, Ministry or Admin can mark documents public"
@@ -54,6 +66,12 @@ async def upload_documents(
         fy = normalise_fy(fy)
     except ValueError as e:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(e)) from None
+    title = " ".join(title.split()) if title else None
+    if title and (len(files) != 1 or len(title) > 500):
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "A title can only be given for a single file, up to 500 characters",
+        )
 
     results: list[UploadResult] = []
     for upload in files:
@@ -80,25 +98,27 @@ async def upload_documents(
             )
             continue
 
-        existing = db.scalar(select(Document).where(Document.sha256 == tmp.sha256))
-        if existing is not None:
+        # Only a copy this person can actually open counts as a duplicate: their own
+        # unit's, or one shared publicly. Another unit's private copy is not their
+        # document, so they get their own - previously that was a dead end (#44).
+        visible = db.scalar(
+            scope_to_user(select(Document).where(Document.sha256 == tmp.sha256), Document, user)
+        )
+        if visible is not None:
             tmp.path.unlink(missing_ok=True)
-            visible = db.scalar(
-                scope_to_user(select(Document).where(Document.id == existing.id), Document, user)
-            )
             results.append(
                 UploadResult(
                     filename=name,
                     result="duplicate",
-                    document=DocumentOut.model_validate(visible) if visible else None,
-                    error="This exact file was uploaded before",
+                    document=DocumentOut.model_validate(visible),
+                    error="This file is already here - opening it instead of adding it again",
                 )
             )
             continue
 
         path = storage.move_to_originals(tmp, kind.ext)
         doc = Document(
-            title=Path(name).stem,
+            title=title or Path(name).stem,
             original_filename=name,
             doc_type=doc_type,
             fy=fy,
@@ -118,7 +138,7 @@ async def upload_documents(
         audit.record(
             db,
             "upload",
-            user_id=user.id,
+            actor=user,
             entity="document",
             entity_id=doc.id,
             details={"filename": name, "sha256": tmp.sha256},
@@ -204,6 +224,8 @@ def get_page(
     renderable = doc.mime_type == "application/pdf" or doc.mime_type.startswith("image/")
     return PageOut(
         document_id=doc.id,
+        document_title=doc.title,
+        source_url=doc.source_url,
         page_no=page_no,
         page_count=doc.page_count,
         has_text_layer=page.has_text_layer,
@@ -218,6 +240,24 @@ def get_page(
         ],
         tables=[TableOut.model_validate(t) for t in tables],
     )
+
+
+@router.get("/{document_id}/facts", response_model=list[FactOut])
+def list_facts(
+    document_id: uuid.UUID,
+    page_no: int | None = Query(None, ge=1),
+    metric: Metric | None = None,
+    user: User = Depends(require(Permission.VIEW_PROCESSING)),
+    db: Session = Depends(get_db),
+) -> list[Fact]:
+    """Numbers extracted from this document's tables, each with its page and cell box."""
+    doc = _get_scoped(db, document_id, user)
+    stmt = select(Fact).where(Fact.document_id == doc.id)
+    if page_no is not None:
+        stmt = stmt.where(Fact.page_no == page_no)
+    if metric is not None:
+        stmt = stmt.where(Fact.metric == metric)
+    return list(db.scalars(stmt.order_by(Fact.page_no, Fact.metric, Fact.subsidiary).limit(5000)))
 
 
 @router.get("/{document_id}/pages/{page_no}/image", response_class=Response)
@@ -259,8 +299,17 @@ def retry_document(
     # clears its earlier results first. Only a document being processed right now is blocked.
     if doc.status == DocumentStatus.PROCESSING:
         raise HTTPException(status.HTTP_409_CONFLICT, "Document is being processed right now")
+    reviewed = db.scalar(
+        select(exists().where(ReviewActionLog.fact_id == Fact.id, Fact.document_id == doc.id))
+    )
+    if reviewed:
+        # Re-processing replaces the document's facts; never silently discard human decisions.
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "A reviewer has already checked figures from this document; it can't be re-processed",
+        )
     doc.status, doc.error_message, doc.pages_done = DocumentStatus.UPLOADED, None, 0
-    audit.record(db, "retry", user_id=user.id, entity="document", entity_id=doc.id, request=request)
+    audit.record(db, "retry", actor=user, entity="document", entity_id=doc.id, request=request)
     db.commit()
     queued = enqueue_ingest(doc.id)
     return UploadResult(

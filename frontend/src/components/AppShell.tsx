@@ -25,16 +25,38 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     api<Me>("/me").then(setMe, (e: unknown) => {
-      if (e instanceof ApiError && e.status === 401) router.replace("/login");
-      else setError(e instanceof Error ? e.message : String(e));
+      // A 401 is already taking us to /login (with ?next=) from inside api().
+      // Redirecting again here would win the race and throw that ?next= away.
+      if (e instanceof ApiError && e.status === 401) return;
+      setError(e instanceof Error ? e.message : String(e));
     });
-  }, [router]);
+  }, []);
 
-  const nav = [
+  const canSeeReports =
+    me?.permissions.includes("edit_reports") ||
+    me?.permissions.includes("approve_reports") ||
+    me?.permissions.includes("export_reports");
+
+  // Menu shows only what the user's role can open (the API checks again on every request).
+  const items: { href: string; label: string; perm?: string }[] = [
     { href: "/", label: t("home") },
-    { href: "/upload", label: t("upload") },
-    { href: "/documents", label: t("documents") },
+    { href: "/ask", label: t("ask"), perm: "ask_questions" },
+    { href: "/upload", label: t("upload"), perm: "upload_documents" },
+    { href: "/documents", label: t("documents"), perm: "view_processing" },
+    { href: "/review", label: t("review"), perm: "review_facts" },
+    { href: "/topics", label: t("topics"), perm: "view_topics" },
+    { href: "/audit", label: t("auditLog"), perm: "view_audit" },
+    { href: "/admin/users", label: t("users"), perm: "manage_admin" },
+    ...(canSeeReports ? [{ href: "/reports", label: t("reports") }] : []),
+    ...(me?.permissions.includes("edit_reports") ? [{ href: "/pq-replies/new", label: t("newPqReply") }] : []),
+    ...(me?.permissions.includes("edit_reports")
+      ? [
+          { href: "/monthly-reports/new", label: t("newMonthlyReport") },
+          { href: "/briefing-notes/new", label: t("newBriefingNote") },
+        ]
+      : []),
   ];
+  const nav = items.filter((n) => !n.perm || me?.permissions.includes(n.perm));
 
   return (
     <div className="flex min-h-full flex-1 flex-col">
@@ -64,9 +86,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               {lang === "en" ? "हिंदी" : "English"}
             </button>
             {me && (
-              <span className="opacity-90">
+              <Link href="/profile" className="opacity-90 hover:underline">
                 {me.name} · {me.org_unit.code}
-              </span>
+              </Link>
             )}
             <button
               onClick={() => {

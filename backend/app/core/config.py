@@ -15,10 +15,18 @@ class Settings(BaseSettings):
     max_upload_mb: int = 100
 
     llm_base_url: str = "http://localhost:11434"
-    llm_model: str = "qwen2.5:7b-instruct"
+    llm_model: str = "qwen2.5:3b-instruct"  # same as .env.example; 7B on GPU / 16 GB+ machines
     embed_model: str = "bge-m3"
+    llm_num_ctx: int = 8192  # context window; must fit the prompt + ~6 passages
     ocr_engine: str = "paddle"
+    # Ask the local LLM to name a table's metric when the keyword rules find none (guide 7.2).
+    extract_use_llm: bool = True
     allow_external_calls: bool = False
+    # Re-build the topics (guide 11) once this many new PQs have arrived since the last run.
+    topics_min_new_pqs: int = 5
+    # Run background jobs inside the API process instead of RQ (no Redis, e.g. Windows without
+    # Docker). Jobs run one at a time on one thread.
+    ingest_inline: bool = False
 
     jwt_secret: str = "change-me"
     jwt_algorithm: str = "HS256"

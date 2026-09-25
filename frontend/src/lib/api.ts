@@ -39,6 +39,215 @@ export type UploadResult = {
   error: string | null;
 };
 
+export type Citation = {
+  id: string; // "C1" (passage) or "F1" (figure): the marker used inside the answer text
+  kind: "passage" | "fact";
+  document_id: string;
+  document: string;
+  page: number;
+  bbox: number[] | null;
+  text: string;
+  chunk_id: string | null;
+  fact_id: string | null;
+  status: string | null;
+};
+
+export type AskResult = {
+  qa_id: string;
+  /** Only present when a past answer is reopened. */
+  question?: string | null;
+  answer: string;
+  route: string;
+  table: { columns: string[]; rows: string[][] } | null;
+  citations: Citation[];
+  grounded: boolean;
+  unmatched_numbers: string[];
+  confidence: "high" | "medium" | "low";
+  not_found: boolean;
+  latency_ms: number;
+};
+
+export type PageData = {
+  document_id: string;
+  document_title: string;
+  source_url: string | null;
+  page_no: number;
+  page_count: number | null;
+  has_text_layer: boolean;
+  ocr_used: boolean;
+  ocr_confidence: number | null;
+  width: number | null;
+  height: number | null;
+  image_url: string | null;
+  chunks: { id: string; text: string; bbox: number[] | null; has_embedding: boolean }[];
+  tables: { id: string; table_title: string | null; bbox: number[] | null; rows_json: string[][] }[];
+};
+
+export type Fact = {
+  id: string;
+  metric: string;
+  subsidiary: string | null;
+  state: string | null;
+  category: string | null;
+  period_type: string | null;
+  period: string | null;
+  value_raw: string;
+  value: number;
+  unit: string | null;
+  value_std: number | null;
+  status: "EXTRACTED" | "FLAGGED" | "VERIFIED" | "REJECTED";
+  confidence: number;
+  document_id: string;
+  page_no: number;
+  bbox: number[] | null;
+  label: string | null;
+};
+
+export type ReviewItem = {
+  fact: Fact;
+  document_title: string;
+  issues: { id: string; rule_code: string; message: string; severity: "high" | "medium" | "low"; status: string }[];
+  related: (Fact & { document_title: string })[];
+  worst_severity: "high" | "medium" | "low";
+  created_at: string;
+};
+
+export type ReviewSummary = {
+  total_facts: number;
+  auto_verified: number;
+  flagged: number;
+  reviewed_verified: number;
+  rejected: number;
+  automation_percent: number | null;
+};
+
+export type AuditLogRow = {
+  id: string;
+  created_at: string;
+  user: { id: string; name: string; email: string } | null;
+  action: string;
+  entity: string | null;
+  entity_id: string | null;
+  details_json: Record<string, unknown> | null;
+  ip: string | null;
+};
+
+export type AuditFilters = {
+  action?: string;
+  entity?: string;
+  user_email?: string;
+  from_date?: string;
+  to_date?: string;
+};
+
+export const AUDIT_PAGE_SIZE = 100;
+
+export type AuditPage = { rows: AuditLogRow[]; hasMore: boolean };
+
+/**
+ * One page of the audit log. The backend has supported limit/offset all along.
+ *
+ * Asks for one row more than it shows: the API returns no total, and "a full page came
+ * back" is not the same as "there is more" — when the count is an exact multiple of the
+ * page size that would offer a Next leading to an empty page.
+ */
+export async function listAuditLog(filters: AuditFilters, offset = 0): Promise<AuditPage> {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value) params.set(key, value);
+  }
+  params.set("limit", String(AUDIT_PAGE_SIZE + 1));
+  params.set("offset", String(offset));
+  const rows = await api<AuditLogRow[]>(`/audit?${params.toString()}`);
+  return { rows: rows.slice(0, AUDIT_PAGE_SIZE), hasMore: rows.length > AUDIT_PAGE_SIZE };
+}
+
+export function listAuditActions(): Promise<string[]> {
+  return api<string[]>("/audit/actions");
+}
+
+export type Role = "admin" | "operator" | "reviewer" | "analyst" | "approver" | "viewer";
+export const ALL_ROLES: Role[] = ["admin", "operator", "reviewer", "analyst", "approver", "viewer"];
+
+export type OrgUnitOut = { id: string; code: string; name: string; type: string };
+
+export type UserRow = {
+  id: string;
+  name: string;
+  email: string;
+  roles: string[];
+  org_unit: OrgUnitOut;
+  is_active: boolean;
+  created_at: string;
+};
+
+export type UserCreateIn = {
+  name: string;
+  email: string;
+  password: string;
+  roles: string[];
+  org_unit_id: string;
+};
+
+export type UserUpdateIn = {
+  name?: string;
+  roles?: string[];
+  org_unit_id?: string;
+  is_active?: boolean;
+};
+
+export type ReportType = "pq_reply" | "monthly" | "briefing";
+export type ReportStatus = "DRAFT" | "IN_REVIEW" | "RETURNED" | "APPROVED" | "EXPORTED";
+
+export type ReportRow = {
+  id: string;
+  report_type: ReportType;
+  title: string;
+  status: ReportStatus;
+  content_json: { text?: string };
+  org_unit_id: string;
+  created_by: string;
+  approver_id: string | null;
+  due_date: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ReportVersionRow = {
+  version: number;
+  content_json: { text?: string };
+  editor: { id: string; name: string; email: string };
+  change_note: string | null;
+  created_at: string;
+};
+
+export type ReportsPanel = {
+  my_drafts: number;
+  returned_to_me: number;
+  awaiting_approval: number;
+  due_soon: number;
+  overdue: number;
+};
+
+export type DocumentsPanel = {
+  processing: number;
+  needs_review: number;
+  failed: number;
+  processed_this_month: number;
+};
+
+export type ReviewPanel = { pending_facts: number; flagged_facts: number };
+
+export type ActivityPanel = { questions_this_month: number };
+
+/** Panels the signed-in person has no permission for come back as null, not zero. */
+export type DashboardSummary = {
+  reports: ReportsPanel | null;
+  documents: DocumentsPanel | null;
+  review: ReviewPanel | null;
+  activity: ActivityPanel | null;
+};
+
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -99,6 +308,38 @@ async function refreshTokens(): Promise<boolean> {
   return true;
 }
 
+/**
+ * Send an expired session back to the login screen, remembering where they were.
+ *
+ * Handled here rather than in each page: every screen called `api()` and only AppShell's
+ * first `/me` knew what a 401 meant, so everywhere else showed a dead red box with no way
+ * back (#45).
+ */
+let leavingForLogin = false;
+
+function toLoginAgain(): void {
+  if (typeof window === "undefined") return;
+  // Several requests can 401 at once (React re-invokes effects in development, and a
+  // page often loads two things). Without this guard the first call clears the token
+  // and navigates to /login?next=…, then the second sees no token, decides nobody was
+  // signed in, and navigates to a bare /login — aborting the first and losing `next`.
+  if (leavingForLogin) return;
+  leavingForLogin = true;
+  const { pathname, search } = window.location;
+  // Someone who never had a token is not resuming a session, they are just arriving.
+  // Only that case gets `next`, which is what makes the login page say "session ended".
+  const hadSession = read(ACCESS) !== null;
+  logout();
+  if (pathname === "/login") return; // already there; nothing to come back to
+  const resuming = hadSession && pathname !== "/";
+  // A full page load on purpose, not router.push: it drops every bit of in-memory state
+  // left over from the expired session. This module is not a component, so there is no
+  // router here anyway.
+  window.location.assign(
+    resuming ? `/login?next=${encodeURIComponent(pathname + search)}` : "/login",
+  );
+}
+
 export async function api<T>(path: string, init: RequestInit = {}, retry = true): Promise<T> {
   const headers = new Headers(init.headers);
   const token = read(ACCESS);
@@ -109,9 +350,285 @@ export async function api<T>(path: string, init: RequestInit = {}, retry = true)
   } catch {
     throw new ApiError(0, "Cannot reach the KoylaSetu server. Please check that the API is running.");
   }
-  if (res.status === 401 && retry && (await refreshTokens())) return api<T>(path, init, false);
+  if (res.status === 401 && retry) {
+    if (await refreshTokens()) return api<T>(path, init, false);
+    toLoginAgain();
+  }
   if (!res.ok) throw new ApiError(res.status, await errorMessage(res));
+  if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
+}
+
+/** Fetch an authenticated image (e.g. a page render) as an object URL for <img src>. */
+export async function fetchImageUrl(path: string, retry = true): Promise<string> {
+  const headers = new Headers();
+  const token = read(ACCESS);
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  const res = await fetch(`${API_URL}${path}`, { headers });
+  if (res.status === 401 && retry) {
+    if (await refreshTokens()) return fetchImageUrl(path, false);
+    toLoginAgain();
+  }
+  if (!res.ok) throw new ApiError(res.status, await errorMessage(res));
+  return URL.createObjectURL(await res.blob());
+}
+
+export function listOrgUnits(): Promise<OrgUnitOut[]> {
+  return api<OrgUnitOut[]>("/org-units");
+}
+
+export function listUsers(): Promise<UserRow[]> {
+  return api<UserRow[]>("/users");
+}
+
+export function createUser(body: UserCreateIn): Promise<UserRow> {
+  return api<UserRow>("/users", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export function updateUser(id: string, body: UserUpdateIn): Promise<UserRow> {
+  return api<UserRow>(`/users/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export function listReports(filters: { status?: string; report_type?: string } = {}): Promise<ReportRow[]> {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value) params.set(key, value);
+  }
+  const qs = params.toString();
+  return api<ReportRow[]>(`/reports${qs ? `?${qs}` : ""}`);
+}
+
+export function createReport(body: {
+  report_type: ReportType;
+  title: string;
+  content_json?: { text?: string };
+  due_date?: string | null;
+}): Promise<ReportRow> {
+  return api<ReportRow>("/reports", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export function getReport(id: string): Promise<ReportRow> {
+  return api<ReportRow>(`/reports/${id}`);
+}
+
+export function listReportVersions(id: string): Promise<ReportVersionRow[]> {
+  return api<ReportVersionRow[]>(`/reports/${id}/versions`);
+}
+
+export function updateReport(
+  id: string,
+  body: { title?: string; content_json?: { text?: string }; due_date?: string | null; change_note?: string },
+): Promise<ReportRow> {
+  return api<ReportRow>(`/reports/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export function submitReport(id: string): Promise<ReportRow> {
+  return api<ReportRow>(`/reports/${id}/submit`, { method: "POST" });
+}
+
+export function approveReport(id: string): Promise<ReportRow> {
+  return api<ReportRow>(`/reports/${id}/approve`, { method: "POST" });
+}
+
+export function rejectReport(id: string, comment: string): Promise<ReportRow> {
+  return api<ReportRow>(`/reports/${id}/reject`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ comment }),
+  });
+}
+
+// --- PQ reply generator (guide 10.2) ---
+
+export type PqSource = {
+  id: string; // "S1": the marker used inside block text
+  kind: "fact" | "chunk";
+  fact_id: string | null;
+  chunk_id: string | null;
+  document_id: string;
+  document: string;
+  page: number;
+  parts: string[];
+};
+
+export type PqBlock = {
+  id: string;
+  part: string; // "a", "b"… or "क"…; "" when the question has no parts
+  question: string;
+  text: string;
+  table: { columns: string[]; rows: string[][] } | null;
+  annexure: string | null; // "Annexure-I" when the table is moved to an annexure
+  citations: string[];
+  not_found: boolean;
+  removed_numbers: string[];
+  note: string | null;
+};
+
+export type PqDraftIn = {
+  house: "LS" | "RS";
+  q_type: "starred" | "unstarred";
+  q_no?: string | null;
+  answer_date?: string | null;
+  mp_name?: string | null;
+  subject?: string | null;
+  question_text: string;
+};
+
+export type PqDraftOut = {
+  pq_id: string;
+  split_method: "markers" | "llm" | "single";
+  report: ReportRow & {
+    content_json: {
+      text?: string;
+      blocks?: PqBlock[];
+      sources?: PqSource[];
+      header?: Record<string, string>;
+      warnings?: string[];
+    };
+  };
+};
+
+/** Generation takes minutes. The same idempotencyKey on a retry (e.g. after a proxy timeout)
+ * returns the draft already made instead of creating a second one. */
+export function draftPqReply(body: PqDraftIn, idempotencyKey: string): Promise<PqDraftOut> {
+  return api<PqDraftOut>("/pq-replies/draft", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey },
+    body: JSON.stringify(body),
+  });
+}
+
+// --- Monthly report and briefing note drafts (guide 10.1, W5 / W6) ---
+
+export type DraftSource = {
+  id: string; // "S1": one document page; the marker used in lines and table cells
+  document_id: string;
+  document: string;
+  page: number;
+};
+
+export type DraftSection = {
+  id: string;
+  heading: string | null;
+  lines: string[];
+  bullets: boolean;
+  table: { columns: string[]; rows: string[][] } | null;
+  notes: string[];
+  removed_numbers: string[];
+};
+
+export type ReportDraftOut = {
+  report: ReportRow & {
+    content_json: {
+      text?: string;
+      kind?: "monthly" | "briefing";
+      title?: string;
+      subtitle?: string;
+      sections?: DraftSection[];
+      sources?: DraftSource[];
+      warnings?: string[];
+      remarks_by?: "model" | "rule";
+    };
+  };
+};
+
+function postDraft(path: string, body: object, idempotencyKey: string): Promise<ReportDraftOut> {
+  return api<ReportDraftOut>(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey },
+    body: JSON.stringify(body),
+  });
+}
+
+export function draftMonthlyReport(month: string, idempotencyKey: string): Promise<ReportDraftOut> {
+  return postDraft("/reports/monthly/draft", { month }, idempotencyKey);
+}
+
+export function draftBriefingNote(
+  body: { topic: string; from?: string | null; to?: string | null },
+  idempotencyKey: string,
+): Promise<ReportDraftOut> {
+  return postDraft("/reports/briefing/draft", body, idempotencyKey);
+}
+
+/** Download an authenticated file (e.g. a DOCX export) and hand it to the browser to save. */
+/** The filename the server asked for, falling back to ours if it did not say. */
+function serverFilename(res: Response, fallback: string): string {
+  const disposition = res.headers.get("content-disposition") ?? "";
+  const encoded = /filename\*=UTF-8''([^;]+)/i.exec(disposition);
+  if (encoded) {
+    try {
+      return decodeURIComponent(encoded[1]);
+    } catch {
+      // malformed encoding: fall through to the plain form
+    }
+  }
+  const plain = /filename="([^"]+)"/i.exec(disposition) ?? /filename=([^;]+)/i.exec(disposition);
+  return plain ? plain[1].trim() : fallback;
+}
+
+export async function downloadFile(path: string, filename: string, retry = true): Promise<void> {
+  const headers = new Headers();
+  const token = read(ACCESS);
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}${path}`, { headers });
+  } catch {
+    throw new ApiError(0, "Cannot reach the KoylaSetu server. Please check that the API is running.");
+  }
+  if (res.status === 401 && retry && (await refreshTokens())) return downloadFile(path, filename, false);
+  if (!res.ok) throw new ApiError(res.status, await errorMessage(res));
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = serverFilename(res, filename);
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
+// The server names the file after the report's own type; `prefix` is only the fallback
+// for when Content-Disposition cannot be read.
+export function exportReport(id: string, format: "docx" | "pdf", prefix = "report"): Promise<void> {
+  return downloadFile(`/reports/${id}/export?format=${format}`, `${prefix}-${id.slice(0, 8)}.${format}`);
+}
+
+export type QaHistoryRow = {
+  id: string;
+  question: string;
+  route: string | null;
+  grounded: boolean | null;
+  created_at: string;
+};
+
+/** Questions this person asked, newest first. Only ever their own. */
+export function listQaHistory(limit = 20): Promise<QaHistoryRow[]> {
+  return api<QaHistoryRow[]>(`/qa/history?limit=${limit}`);
+}
+
+/** A past answer, rebuilt from its log. Nothing is re-asked and no model runs. */
+export function getQaAnswer(id: string): Promise<AskResult> {
+  return api<AskResult>(`/qa/${id}`);
+}
+
+export function getDashboardSummary(): Promise<DashboardSummary> {
+  return api<DashboardSummary>("/dashboard/summary");
 }
 
 export async function login(email: string, password: string): Promise<void> {
@@ -122,6 +639,14 @@ export async function login(email: string, password: string): Promise<void> {
   });
   if (!res.ok) throw new ApiError(res.status, await errorMessage(res));
   saveTokens(await res.json());
+}
+
+export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  await api<void>("/me/password", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+  });
 }
 
 /** Multipart upload with a progress callback (fetch cannot report upload progress). */
