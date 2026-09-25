@@ -3,14 +3,35 @@
 // Topic explorer (guide section 11): word cloud, top topics, per-topic trend by year, and a
 // topic's questions. The server returns weighted words as JSON; the cloud is drawn here.
 
-import { useEffect, useMemo, useState } from "react";
+import { Cloud, ListTree, MessagesSquare, RefreshCw, TrendingUp } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useMe } from "@/components/AppShell";
-import { useT, type LabelKey } from "@/lib/i18n";
+import TopicFilters, { DEFAULT_FILTERS, yearErrors } from "@/components/topics/TopicFilters";
+import TopicList from "@/components/topics/TopicList";
+import TopicQuestions from "@/components/topics/TopicQuestions";
+import WordChip from "@/components/topics/WordChip";
+import WordCloudView from "@/components/topics/WordCloudView";
+import YearChart from "@/components/topics/YearChart";
+import Alert from "@/components/ui/Alert";
+import Badge from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { Card, CardHeader } from "@/components/ui/Card";
+import EmptyState from "@/components/ui/EmptyState";
+import PageHeader from "@/components/ui/PageHeader";
+import { Skeleton } from "@/components/ui/Skeleton";
+import Spinner from "@/components/ui/Spinner";
+import { useToast } from "@/components/ui/Toast";
+import { errorText } from "@/lib/errors";
+import { formatDateTime, formatNumber } from "@/lib/format";
+import { useT } from "@/lib/i18n";
+import { can } from "@/lib/permissions";
 import {
   getWordCloud,
+  keywordsInclude,
   listTopicQuestions,
   listTopics,
+  questionUses,
   rerunTopics,
   type TopicQuestion,
   type TopicRow,
@@ -19,47 +40,93 @@ import {
   type WordCloudFilters,
 } from "@/lib/topics";
 
-const SUBSIDIARIES = ["ECL", "BCCL", "CCL", "NCL", "WCL", "SECL", "MCL", "NEC", "CMPDI", "SCCL"];
+const DEBOUNCE_MS = 300;
 
-function errorText(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
-}
+/** A response or error tagged with the request it answers, so a stale one is never shown. */
+type Tagged<T> = { key: string; value: T };
 
 export default function TopicsPage() {
   const me = useMe();
-  const { t } = useT();
-  const isAdmin = me.permissions.includes("manage_admin");
+  const { t, locale } = useT();
+  const toast = useToast();
+  const isAdmin = can(me, "manage_admin");
 
-  const [filters, setFilters] = useState<WordCloudFilters>({ source: "questions" });
-  const [cloud, setCloud] = useState<WordCloud | null>(null);
+  // Word cloud: filters are applied after a short pause in typing.
+  const [filters, setFilters] = useState<WordCloudFilters>(DEFAULT_FILTERS);
+  const [cloudNonce, setCloudNonce] = useState(0);
+  const [cloud, setCloud] = useState<Tagged<WordCloud> | null>(null);
+  const [cloudError, setCloudError] = useState<Tagged<string> | null>(null);
+  const firstCloud = useRef(true);
+
+  // Topics of the latest run.
+  const [topicsNonce, setTopicsNonce] = useState(0);
   const [run, setRun] = useState<TopicRun | null>(null);
-  const [selected, setSelected] = useState<TopicRow | null>(null);
+  const [topicsError, setTopicsError] = useState<string | null>(null);
+
+  // Drill-down: a word from the cloud, a topic, and a year from its chart.
+  const [word, setWord] = useState<string | undefined>(undefined);
+  const [selectedId, setSelectedId] = useState<string | undefined>(undefined);
   const [year, setYear] = useState<string | undefined>(undefined);
-  const [questions, setQuestions] = useState<TopicQuestion[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [questionsNonce, setQuestionsNonce] = useState(0);
+  const [questions, setQuestions] = useState<Tagged<TopicQuestion[]> | null>(null);
+  const [questionsError, setQuestionsError] = useState<Tagged<string> | null>(null);
+
+  const [rerunning, setRerunning] = useState(false);
+
+  const years = yearErrors(filters);
+  const cloudQuery = years.from || years.to ? null : filters;
+  const cloudKey = cloudQuery ? `${JSON.stringify(cloudQuery)}#${cloudNonce}` : null;
 
   useEffect(() => {
-    getWordCloud(filters).then(setCloud, (e: unknown) => setError(errorText(e)));
-  }, [filters]);
+    if (!cloudQuery || !cloudKey) return;
+    const ctrl = new AbortController();
+    const delay = firstCloud.current ? 0 : DEBOUNCE_MS;
+    firstCloud.current = false;
+    const timer = window.setTimeout(() => {
+      getWordCloud(cloudQuery, ctrl.signal).then(
+        (value) => !ctrl.signal.aborted && setCloud({ key: cloudKey, value }),
+        (e: unknown) => !ctrl.signal.aborted && setCloudError({ key: cloudKey, value: errorText(e, t) }),
+      );
+    }, delay);
+    return () => {
+      window.clearTimeout(timer);
+      ctrl.abort();
+    };
+    // cloudKey captures every field of cloudQuery.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cloudKey]);
 
   useEffect(() => {
-    listTopics().then(
-      (r) => {
-        setRun(r);
-        setSelected(r.topics[0] ?? null);
-      },
-      (e: unknown) => setError(errorText(e)),
+    const ctrl = new AbortController();
+    listTopics(ctrl.signal).then(
+      (r) => !ctrl.signal.aborted && setRun(r),
+      (e: unknown) => !ctrl.signal.aborted && setTopicsError(errorText(e)),
     );
-  }, []);
+    return () => ctrl.abort();
+  }, [topicsNonce]);
+
+  const visibleTopics = useMemo(() => {
+    const all = run?.topics ?? [];
+    return word ? all.filter((x) => keywordsInclude(x.keywords, word)) : all;
+  }, [run, word]);
+  const selected: TopicRow | null = visibleTopics.find((x) => x.id === selectedId) ?? visibleTopics[0] ?? null;
+
+  const questionsKey = selected ? `${selected.id}|${year ?? ""}#${questionsNonce}` : null;
 
   useEffect(() => {
-    if (!selected) return;
-    listTopicQuestions(selected.id, year).then(setQuestions, (e: unknown) => setError(errorText(e)));
-  }, [selected, year]);
+    if (!selected || !questionsKey) return;
+    const ctrl = new AbortController();
+    listTopicQuestions(selected.id, year, ctrl.signal).then(
+      (value) => !ctrl.signal.aborted && setQuestions({ key: questionsKey, value }),
+      (e: unknown) => !ctrl.signal.aborted && setQuestionsError({ key: questionsKey, value: errorText(e, t) }),
+    );
+    return () => ctrl.abort();
+    // questionsKey captures the topic id and year.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [questionsKey]);
 
   // One shared year axis for every topic, so trends are comparable.
-  const years = useMemo(() => {
+  const yearAxis = useMemo(() => {
     const all = new Set<string>();
     for (const topic of run?.topics ?? []) {
       for (const y of Object.keys(topic.period_counts.year ?? {})) all.add(y);
@@ -71,269 +138,262 @@ export default function TopicsPage() {
     return out;
   }, [run]);
 
-  function setFilter(key: keyof WordCloudFilters, value: string) {
-    setCloud(null);
-    setFilters({ ...filters, [key]: value || undefined });
+  function pickWord(w: string) {
+    setWord(w === word ? undefined : w);
+    setYear(undefined);
   }
 
   function selectTopic(topic: TopicRow) {
-    setQuestions(null);
+    setSelectedId(topic.id);
     setYear(undefined);
-    setSelected(topic);
+  }
+
+  function retryTopics() {
+    setTopicsError(null);
+    setTopicsNonce((n) => n + 1);
   }
 
   async function rerun() {
+    setRerunning(true);
     try {
       const res = await rerunTopics();
-      setNotice(res.queued ? t("rerunQueued") : t("rerunOffline"));
+      if (res.queued) toast({ tone: "success", title: t("rerunQueued") });
+      else toast({ tone: "danger", title: t("topics.rerunFailed"), body: t("rerunOffline") });
     } catch (e) {
-      setError(errorText(e));
+      toast({ tone: "danger", title: t("topics.rerunFailed"), body: errorText(e, t) });
+    } finally {
+      setRerunning(false);
     }
   }
 
-  const maxSize = Math.max(1, ...(run?.topics ?? []).map((x) => x.size));
+  // Panel states, in order: error, first load, empty, content.
+  const cloudErr = cloudError && cloudError.key === cloudKey ? cloudError.value : null;
+  const cloudLoading = !!cloudKey && cloud?.key !== cloudKey && !cloudErr;
+  const questionsErr = questionsError && questionsError.key === questionsKey ? questionsError.value : null;
+  const questionsReady = questions && questions.key === questionsKey ? questions.value : null;
+  const shownQuestions = questionsReady && word ? questionsReady.filter((q) => questionUses(q, word)) : questionsReady;
+
+  const wordChip = word ? <WordChip word={word} onRemove={() => pickWord(word)} /> : null;
 
   return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold">{t("topicsTitle")}</h1>
-          <p className="mt-1 max-w-3xl text-sm text-gray-600">{t("topicsHelp")}</p>
-        </div>
-        {isAdmin && (
-          <button onClick={rerun} className="rounded border border-brand px-3 py-1.5 text-sm text-brand hover:bg-brand-soft">
-            {t("rerunTopics")}
-          </button>
-        )}
-      </div>
-      {error && <p className="rounded border border-red-300 bg-red-50 p-3 text-red-800">{error}</p>}
-      {notice && <p className="rounded border border-blue-200 bg-blue-50 p-3 text-blue-900">{notice}</p>}
+    <div className="space-y-6">
+      <PageHeader
+        title={t("topicsTitle")}
+        description={t("topicsHelp")}
+        meta={
+          run &&
+          (run.built_at ? (
+            <Badge tone="neutral" dot>
+              {t("builtAt")} {formatDateTime(run.built_at, locale)} · {formatNumber(run.total_questions, locale)}{" "}
+              {t("questionsWord")}
+            </Badge>
+          ) : (
+            <Badge tone="warning" dot>
+              {t("topics.notBuilt")}
+            </Badge>
+          ))
+        }
+        actions={
+          isAdmin && (
+            <Button variant="secondary" icon={<RefreshCw size={16} aria-hidden />} loading={rerunning} onClick={rerun}>
+              {t("rerunTopics")}
+            </Button>
+          )
+        }
+      />
 
-      <section className="space-y-3 rounded border bg-white p-4">
-        <h2 className="text-lg font-semibold">{t("wordCloud")}</h2>
-        <div className="flex flex-wrap items-end gap-3 text-sm">
-          <FilterSelect label={t("textSource")} value={filters.source ?? "questions"} onChange={(v) => setFilter("source", v)}
-            options={["questions", "documents", "all"].map((s) => [s, t(`source.${s}` as LabelKey)])} />
-          <FilterSelect label={t("house")} value={filters.house ?? ""} onChange={(v) => setFilter("house", v)}
-            options={[["", t("allHouses")], ["LS", t("house.LS")], ["RS", t("house.RS")]]} />
-          <FilterSelect label={t("session")} value={filters.session ?? ""} onChange={(v) => setFilter("session", v)}
-            options={[["", t("allSessions")], ...["budget", "monsoon", "winter"].map((s) => [s, t(`session.${s}` as LabelKey)] as [string, string])]} />
-          <FilterSelect label={t("subsidiary")} value={filters.subsidiary ?? ""} onChange={(v) => setFilter("subsidiary", v)}
-            options={[["", t("allSubsidiaries")], ...SUBSIDIARIES.map((s) => [s, s] as [string, string])]} />
-          <YearInput label={t("yearFrom")} value={filters.from} onChange={(v) => setFilter("from", v)} />
-          <YearInput label={t("yearTo")} value={filters.to} onChange={(v) => setFilter("to", v)} />
-        </div>
-        {!cloud && <p className="text-gray-500">{t("loading")}</p>}
-        {cloud && cloud.words.length === 0 && <p className="text-gray-500">{t("noWords")}</p>}
-        {cloud && cloud.words.length > 0 && (
-          <>
-            <WordCloudView words={cloud.words} />
-            <p className="text-xs text-gray-500">
-              {cloud.texts} {t("textsCounted")}
-            </p>
-          </>
-        )}
-      </section>
+      <TopicFilters value={filters} onChange={setFilters} />
 
-      <section className="grid gap-4 md:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
-        <div className="space-y-2 rounded border bg-white p-4">
-          <h2 className="text-lg font-semibold">{t("topTopics")}</h2>
-          {!run && <p className="text-gray-500">{t("loading")}</p>}
-          {run && run.topics.length === 0 && <p className="text-gray-600">{t("noTopicsYet")}</p>}
-          {run?.built_at && (
-            <p className="text-xs text-gray-500">
-              {t("builtAt")} {new Date(run.built_at).toLocaleString()} · {run.total_questions} {t("questionsWord")}
-            </p>
+      <Card>
+        <CardHeader
+          title={t("wordCloud")}
+          subtitle={
+            cloud
+              ? `${formatNumber(cloud.value.texts, locale)} ${t("textsCounted")} · ${t("topics.wordCloudHint")}`
+              : t("topics.wordCloudHint")
+          }
+          icon={<Cloud />}
+          actions={
+            <>
+              {cloudLoading && cloud && (
+                <span role="status" className="inline-flex items-center gap-1.5 text-xs text-muted">
+                  <Spinner size={14} /> {t("topics.updating")}
+                </span>
+              )}
+              {wordChip}
+            </>
+          }
+        />
+        {cloudErr ? (
+          <Alert
+            tone="danger"
+            title={t("topics.cloudFailed")}
+            action={
+              <Button variant="outline" size="sm" onClick={() => setCloudNonce((n) => n + 1)}>
+                {t("retry")}
+              </Button>
+            }
+          >
+            {cloudErr}
+          </Alert>
+        ) : !cloud ? (
+          <CloudSkeleton />
+        ) : cloud.value.words.length === 0 ? (
+          <EmptyState compact icon={<Cloud />} title={t("noWords")} />
+        ) : (
+          <WordCloudView words={cloud.value.words} active={word} onPick={pickWord} />
+        )}
+      </Card>
+
+      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
+        <Card>
+          <CardHeader
+            title={t("topTopics")}
+            subtitle={
+              run && run.topics.length > 0
+                ? `${formatNumber(visibleTopics.length, locale)} / ${formatNumber(run.topics.length, locale)} ${t("topics.topicCount")}`
+                : undefined
+            }
+            icon={<ListTree />}
+            actions={wordChip}
+          />
+          {topicsError ? (
+            <Alert
+              tone="danger"
+              title={t("topics.topicsFailed")}
+              action={
+                <Button variant="outline" size="sm" onClick={retryTopics}>
+                  {t("retry")}
+                </Button>
+              }
+            >
+              {topicsError}
+            </Alert>
+          ) : !run ? (
+            <ListSkeleton rows={5} className="h-20" />
+          ) : run.topics.length === 0 ? (
+            <EmptyState compact icon={<ListTree />} title={t("noTopicsYet")}>
+              {isAdmin ? t("topics.noTopicsAdminHint") : undefined}
+            </EmptyState>
+          ) : visibleTopics.length === 0 ? (
+            <EmptyState
+              compact
+              icon={<ListTree />}
+              title={t("topics.noTopicsForWord")}
+              action={
+                <Button variant="outline" size="sm" onClick={() => pickWord(word ?? "")}>
+                  {t("topics.removeWordFilter")}
+                </Button>
+              }
+            >
+              {t("topics.noTopicsForWordHint")}
+            </EmptyState>
+          ) : (
+            <TopicList topics={visibleTopics} selectedId={selected?.id} word={word} onSelect={selectTopic} />
           )}
-          <ul className="space-y-2">
-            {run?.topics.map((topic) => (
-              <li key={topic.id}>
-                <button
-                  onClick={() => selectTopic(topic)}
-                  className={`w-full rounded border p-2 text-left hover:bg-brand-soft ${
-                    selected?.id === topic.id ? "border-brand bg-brand-soft" : ""
-                  }`}
-                >
-                  <div className="flex items-baseline justify-between gap-2">
-                    <span className="font-medium">{topic.label}</span>
-                    <span className="text-sm text-gray-600">{topic.size}</span>
-                  </div>
-                  <div className="mt-1 h-1.5 rounded bg-gray-100">
-                    <div className="h-1.5 rounded bg-brand" style={{ width: `${(topic.size / maxSize) * 100}%` }} />
-                  </div>
-                  <p className="mt-1 text-xs text-gray-600">{topic.keywords.join(", ")}</p>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
+        </Card>
 
-        {selected && (
-          <div className="space-y-3 rounded border bg-white p-4">
-            <h2 className="text-lg font-semibold">{selected.label}</h2>
-            <div>
-              <h3 className="text-sm font-medium">{t("questionsPerYear")}</h3>
-              <YearBars
-                years={years}
+        <div className="space-y-6">
+          <Card>
+            <CardHeader
+              title={selected ? `${t("questionsPerYear")}: ${selected.label}` : t("questionsPerYear")}
+              subtitle={selected ? t("clickBarHint") : undefined}
+              icon={<TrendingUp />}
+              actions={
+                year && (
+                  <Button variant="ghost" size="sm" onClick={() => setYear(undefined)}>
+                    {t("allYears")}
+                  </Button>
+                )
+              }
+            />
+            {!run && !topicsError ? (
+              <Skeleton className="h-52 rounded-panel" />
+            ) : !selected ? (
+              <EmptyState compact icon={<TrendingUp />} title={t("topics.selectTopic")} />
+            ) : yearAxis.length === 0 || Object.keys(selected.period_counts.year ?? {}).length === 0 ? (
+              <EmptyState compact icon={<TrendingUp />} title={t("topics.noYearData")} />
+            ) : (
+              <YearChart
+                years={yearAxis}
                 counts={selected.period_counts.year ?? {}}
                 active={year}
-                onPick={(y) => {
-                  setQuestions(null);
-                  setYear(y === year ? undefined : y);
-                }}
+                onPick={(y) => setYear(y === year ? undefined : y)}
               />
-              <p className="text-xs text-gray-500">
-                {t("clickBarHint")}{" "}
-                {year && (
-                  <button className="text-brand underline" onClick={() => { setQuestions(null); setYear(undefined); }}>
-                    {t("allYears")}
-                  </button>
-                )}
-              </p>
-            </div>
-            <h3 className="text-sm font-medium">
-              {t("questionsInTopic")} {year ? `(${year})` : ""}
-            </h3>
-            {!questions && <p className="text-gray-500">{t("loading")}</p>}
-            <ul className="divide-y">
-              {questions?.map((q) => (
-                <li key={q.id} className="py-2 text-sm">
-                  <div className="flex flex-wrap items-baseline gap-x-2">
-                    <span className="font-medium">{q.subject || q.question_text.slice(0, 80)}</span>
-                    <span className="text-xs text-gray-500">
-                      {t(`house.${q.house}` as LabelKey)} {q.q_no ? `Q${q.q_no}` : ""} {q.answer_date ?? ""}
-                    </span>
-                  </div>
-                  <p className="mt-0.5 line-clamp-2 text-gray-700">{q.question_text}</p>
-                  {q.keywords.length > 0 && (
-                    <p className="mt-0.5 text-xs text-gray-500">
-                      {t("keywords")}: {q.keywords.join(", ")}
-                    </p>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </section>
+            )}
+          </Card>
+
+          {(selected || !run) && !topicsError && (
+            <Card>
+              <CardHeader
+                title={year ? `${t("questionsInTopic")} (${year})` : t("questionsInTopic")}
+                subtitle={
+                  shownQuestions ? `${formatNumber(shownQuestions.length, locale)} ${t("questionsWord")}` : undefined
+                }
+                icon={<MessagesSquare />}
+                actions={wordChip}
+              />
+              {questionsErr ? (
+                <Alert
+                  tone="danger"
+                  title={t("topics.questionsFailed")}
+                  action={
+                    <Button variant="outline" size="sm" onClick={() => setQuestionsNonce((n) => n + 1)}>
+                      {t("retry")}
+                    </Button>
+                  }
+                >
+                  {questionsErr}
+                </Alert>
+              ) : !shownQuestions ? (
+                <ListSkeleton rows={4} className="h-16" />
+              ) : shownQuestions.length === 0 ? (
+                <EmptyState
+                  compact
+                  icon={<MessagesSquare />}
+                  title={
+                    word && questionsReady && questionsReady.length > 0
+                      ? t("topics.noQuestionsWord")
+                      : year
+                        ? t("topics.noQuestionsYear")
+                        : t("topics.noQuestions")
+                  }
+                />
+              ) : (
+                <TopicQuestions key={questionsKey} questions={shownQuestions} word={word} />
+              )}
+            </Card>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
 
-function FilterSelect(props: {
-  label: string;
-  value: string;
-  options: (string[] | [string, string])[];
-  onChange: (value: string) => void;
-}) {
+function CloudSkeleton() {
+  const { t } = useT();
+  const widths = ["w-16", "w-24", "w-12", "w-32", "w-20", "w-14", "w-28", "w-16", "w-20", "w-10", "w-24", "w-16"];
+  const heights = ["h-5", "h-8", "h-4", "h-10", "h-6", "h-5", "h-7", "h-4", "h-9", "h-5", "h-6", "h-4"];
   return (
-    <label className="block">
-      <span className="font-medium">{props.label}</span>
-      <select value={props.value} onChange={(e) => props.onChange(e.target.value)} className="mt-1 block rounded border px-2 py-1.5">
-        {props.options.map(([value, label]) => (
-          <option key={value} value={value}>
-            {label}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
-}
-
-function YearInput(props: { label: string; value?: string; onChange: (value: string) => void }) {
-  return (
-    <label className="block">
-      <span className="font-medium">{props.label}</span>
-      <input
-        type="number"
-        min={1990}
-        max={2100}
-        defaultValue={props.value}
-        onBlur={(e) => props.onChange(e.target.value)}
-        onKeyDown={(e) => e.key === "Enter" && props.onChange((e.target as HTMLInputElement).value)}
-        className="mt-1 block w-24 rounded border px-2 py-1.5"
-        placeholder="2019"
-      />
-    </label>
-  );
-}
-
-/** Words sized by weight (square-root scale, so a few big words don't swamp the rest). */
-function WordCloudView({ words }: { words: { text: string; weight: number }[] }) {
-  const max = Math.max(...words.map((w) => w.weight));
-  // Alphabetical order scatters big and small words; stable between renders.
-  const ordered = [...words].sort((a, b) => a.text.localeCompare(b.text));
-  return (
-    <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 rounded bg-gray-50 p-4 leading-tight">
-      {ordered.map((w) => {
-        const scale = Math.sqrt(w.weight / max);
-        return (
-          <span
-            key={w.text}
-            title={`${w.text}: ${w.weight}`}
-            className="cursor-default text-brand"
-            style={{ fontSize: `${0.75 + scale * 1.9}rem`, opacity: 0.45 + scale * 0.55, fontWeight: scale > 0.6 ? 600 : 400 }}
-          >
-            {w.text}
-          </span>
-        );
-      })}
+    <div
+      role="status"
+      aria-label={t("loading")}
+      className="flex flex-wrap items-center justify-center gap-3 rounded-panel bg-surface-subtle p-6"
+    >
+      {widths.map((w, i) => (
+        <Skeleton key={i} className={`${w} ${heights[i]} rounded-full`} />
+      ))}
     </div>
   );
 }
 
-/** One-series bar chart: questions per year, a bar per year on a shared axis. */
-function YearBars(props: {
-  years: string[];
-  counts: Record<string, number>;
-  active?: string;
-  onPick: (year: string) => void;
-}) {
-  const { years, counts } = props;
-  if (years.length === 0) return <p className="text-sm text-gray-500">—</p>;
-  const max = Math.max(1, ...years.map((y) => counts[y] ?? 0));
-  const W = 480;
-  const H = 150;
-  const pad = { l: 28, r: 8, t: 12, b: 22 };
-  const slot = (W - pad.l - pad.r) / years.length;
-  const barW = Math.min(36, slot - 2);
-  const y0 = H - pad.b;
-  const scale = (v: number) => ((H - pad.t - pad.b) * v) / max;
+function ListSkeleton({ rows, className }: { rows: number; className: string }) {
+  const { t } = useT();
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full max-w-xl" role="img" aria-label="questions per year">
-      <line x1={pad.l} x2={W - pad.r} y1={y0} y2={y0} stroke="#d1d5db" />
-      <text x={pad.l - 6} y={pad.t + 4} textAnchor="end" fontSize="10" fill="#6b7280">
-        {max}
-      </text>
-      <line x1={pad.l} x2={W - pad.r} y1={pad.t} y2={pad.t} stroke="#f3f4f6" />
-      {years.map((y, i) => {
-        const v = counts[y] ?? 0;
-        const h = Math.max(scale(v), 5); // room for the rounded top
-        const x = pad.l + i * slot + (slot - barW) / 2;
-        const dim = props.active && props.active !== y;
-        return (
-          <g key={y} onClick={() => v > 0 && props.onPick(y)} className={v > 0 ? "cursor-pointer" : ""}>
-            <title>{`${y}: ${v}`}</title>
-            {/* Hit area bigger than the bar. */}
-            <rect x={pad.l + i * slot} y={pad.t} width={slot} height={y0 - pad.t} fill="transparent" />
-            {v > 0 && (
-              <path
-                d={`M${x},${y0} v${-(h - 4)} q0,-4 4,-4 h${barW - 8} q4,0 4,4 v${h - 4} z`}
-                fill="var(--brand)"
-                opacity={dim ? 0.35 : 1}
-              />
-            )}
-            {v > 0 && (
-              <text x={x + barW / 2} y={y0 - h - 3} textAnchor="middle" fontSize="10" fill="#374151">
-                {v}
-              </text>
-            )}
-            <text x={pad.l + i * slot + slot / 2} y={H - 6} textAnchor="middle" fontSize="10" fill="#6b7280">
-              {y}
-            </text>
-          </g>
-        );
-      })}
-    </svg>
+    <div role="status" aria-label={t("loading")} className="space-y-2">
+      {Array.from({ length: rows }, (_, i) => (
+        <Skeleton key={i} className={`${className} rounded-panel`} />
+      ))}
+    </div>
   );
 }

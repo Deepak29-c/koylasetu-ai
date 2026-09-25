@@ -23,6 +23,9 @@ CASES = [
     (R.APPROVER, P.VIEW_AUDIT, True),
     (R.ANALYST, P.VIEW_AUDIT, False),
     (R.APPROVER, P.VIEW_PROCESSING, False),
+    (R.APPROVER, P.VIEW_METRICS, True),
+    (R.ADMIN, P.VIEW_METRICS, True),
+    (R.ANALYST, P.VIEW_METRICS, False),
 ]
 
 

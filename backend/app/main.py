@@ -6,6 +6,7 @@ from app.api import (
     auth,
     dashboard,
     documents,
+    metrics,
     pq_replies,
     qa,
     report_drafts,
@@ -50,6 +51,7 @@ app.include_router(pq_replies.router)
 app.include_router(pq_replies.export_router)
 app.include_router(topics.router)
 app.include_router(dashboard.router)
+app.include_router(metrics.router)
 
 
 @app.get("/health", tags=["system"])
