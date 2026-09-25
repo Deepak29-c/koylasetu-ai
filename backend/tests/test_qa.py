@@ -299,8 +299,16 @@ def test_numeric_answer_is_cited_to_facts_and_grounded():
 
 
 def test_numeric_answer_with_a_calculated_or_wrong_figure_is_flagged():
-    result, _, _ = ask_numeric(Q_NCL, NCL, "NCL achieved 104.44% of its target [F1][F2].")
+    text = "NCL produced 12.70 MT [F1], 104.44% of its target of 12.16 MT [F2]."
+    result, _, _ = ask_numeric(Q_NCL, NCL, text)
     assert not result.grounded and result.unmatched_numbers == ["104.44"]
+
+
+def test_calculated_figure_without_the_source_figures_is_replaced():
+    # The model stated only its own calculation: the user gets the sourced figures instead
+    result, _, _ = ask_numeric(Q_NCL, NCL, "NCL achieved 104.44% of its target [F1][F2].")
+    assert result.answer == qa.template_answer(NCL) and "104.44" not in result.answer
+    assert result.grounded
 
 
 def test_no_matching_facts_falls_back_to_text_and_says_so():
@@ -381,6 +389,8 @@ def test_bare_citation_maps_to_fact_when_only_facts_were_given():
         "MCL | coal despatch | April to Dec 2024 | [F1] 157.82 MT",
         "Not found in the available documents.",
         "NCL produced 12.70 MT.",  # no citation at all
+        "[12.70 MT] [F1] [12.16 MT] [F2]",  # figures in brackets (seen live: "[400715.45 MT] [F1]")
+        "NCL [F1] compared with its target [F2]",  # cites but never states the figures
     ],
 )
 def test_garbled_model_wording_is_replaced_by_plain_sentence(garbled):
