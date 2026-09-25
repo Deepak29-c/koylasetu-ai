@@ -16,8 +16,6 @@ import {
   LogOut,
   Menu,
   MessageSquareText,
-  PanelLeftClose,
-  PanelLeftOpen,
   ScrollText,
   ShieldCheck,
   Upload,
@@ -27,7 +25,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { createContext, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 
 import Alert from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
@@ -185,82 +183,21 @@ function MobileMenu({ onClose, children }: { onClose: () => void; children: Reac
   );
 }
 
-// Open / closed choice for the desktop menu, remembered per browser. Kept in memory too, so the
-// button still works when storage is blocked (private windows).
-const MENU_OPEN_KEY = "koylasetu.menuOpen";
-const menuListeners = new Set<() => void>();
-let menuOpenInMemory = true;
-
-function readMenuOpen(): boolean {
-  try {
-    const saved = window.localStorage.getItem(MENU_OPEN_KEY);
-    return saved === null ? menuOpenInMemory : saved !== "false";
-  } catch {
-    return menuOpenInMemory;
-  }
-}
-
-function writeMenuOpen(open: boolean) {
-  menuOpenInMemory = open;
-  try {
-    window.localStorage.setItem(MENU_OPEN_KEY, String(open));
-  } catch {
-    // storage blocked: the in-memory value is used
-  }
-  menuListeners.forEach((notify) => notify());
-}
-
-function subscribeMenuOpen(notify: () => void) {
-  menuListeners.add(notify);
-  window.addEventListener("storage", notify); // another tab changed it
-  return () => {
-    menuListeners.delete(notify);
-    window.removeEventListener("storage", notify);
-  };
-}
-
 /**
- * The desktop menu opens and closes only when the user asks, with the button at its top.
- * Open, it takes its own space and the page moves over; closed, it is a slim icon rail whose
- * icons show their names as tooltips. It never covers the page. The choice is remembered.
+ * The desktop menu is always open, in its own 256px column beside the page, so it never
+ * covers anything and every item shows its name. (Narrow screens use the drawer instead.)
  */
 function DesktopRail({ me, current, onSignOut }: { me: Me | null; current: string | null; onSignOut: () => void }) {
   const { t } = useT();
-  // Server render assumes "open"; the browser then uses the saved choice.
-  const open = useSyncExternalStore(subscribeMenuOpen, readMenuOpen, () => true);
-  const toggle = () => writeMenuOpen(!open);
-  const label = open ? t("nav.closeMenu") : t("nav.openMenu");
-  const ToggleIcon = open ? PanelLeftClose : PanelLeftOpen;
-
   return (
-    <div
-      className={cn(
-        "relative hidden shrink-0 transition-[width] duration-200 ease-out lg:block",
-        open ? "w-64" : "w-[72px]",
-      )}
-    >
+    <div className="relative hidden w-64 shrink-0 lg:block">
       <aside
         aria-label={t("nav.main")}
-        className={cn(
-          "fixed inset-y-0 left-0 z-40 flex flex-col overflow-hidden bg-sidebar text-white transition-[width] duration-200 ease-out",
-          open ? "w-64" : "w-[72px]",
-        )}
+        className="fixed inset-y-0 left-0 z-40 flex w-64 flex-col overflow-hidden bg-sidebar text-white"
       >
-        <div className={cn("flex shrink-0 items-center", open ? "justify-between pr-3" : "flex-col")}>
-          <Brand collapsed={!open} />
-          <button
-            type="button"
-            onClick={toggle}
-            aria-label={label}
-            aria-expanded={open}
-            title={label}
-            className="focus-on-dark rounded-full p-2 text-sidebar-text hover:bg-sidebar-hover hover:text-white"
-          >
-            <ToggleIcon size={18} aria-hidden />
-          </button>
-        </div>
-        <SideNav me={me} current={current} collapsed={!open} />
-        <AccountNav me={me} current={current} collapsed={!open} onSignOut={onSignOut} />
+        <Brand collapsed={false} />
+        <SideNav me={me} current={current} collapsed={false} />
+        <AccountNav me={me} current={current} collapsed={false} onSignOut={onSignOut} />
       </aside>
     </div>
   );
