@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import audit, auth, documents, qa, reports, users
+from app.api import audit, auth, documents, pq_replies, qa, reports, users
 from app.core.config import get_settings
 
 app = FastAPI(
@@ -24,6 +24,8 @@ app.include_router(qa.router)
 app.include_router(audit.router)
 app.include_router(users.router)
 app.include_router(reports.router)
+app.include_router(pq_replies.router)
+app.include_router(pq_replies.export_router)
 
 
 @app.get("/health", tags=["system"])

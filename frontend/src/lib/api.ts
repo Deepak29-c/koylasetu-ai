@@ -332,6 +332,83 @@ export function rejectReport(id: string, comment: string): Promise<ReportRow> {
   });
 }
 
+// --- PQ reply generator (guide 10.2) ---
+
+export type PqSource = {
+  id: string; // "S1": the marker used inside block text
+  kind: "fact" | "chunk";
+  fact_id: string | null;
+  chunk_id: string | null;
+  document_id: string;
+  document: string;
+  page: number;
+  parts: string[];
+};
+
+export type PqBlock = {
+  id: string;
+  part: string; // "a", "b"… or "क"…; "" when the question has no parts
+  question: string;
+  text: string;
+  table: { columns: string[]; rows: string[][] } | null;
+  annexure: string | null; // "Annexure-I" when the table is moved to an annexure
+  citations: string[];
+  not_found: boolean;
+  removed_numbers: string[];
+  note: string | null;
+};
+
+export type PqDraftIn = {
+  house: "LS" | "RS";
+  q_type: "starred" | "unstarred";
+  q_no?: string | null;
+  answer_date?: string | null;
+  mp_name?: string | null;
+  subject?: string | null;
+  question_text: string;
+};
+
+export type PqDraftOut = {
+  pq_id: string;
+  split_method: "markers" | "llm" | "single";
+  report: ReportRow & {
+    content_json: { text?: string; blocks?: PqBlock[]; sources?: PqSource[]; header?: Record<string, string> };
+  };
+};
+
+export function draftPqReply(body: PqDraftIn): Promise<PqDraftOut> {
+  return api<PqDraftOut>("/pq-replies/draft", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+/** Download an authenticated file (e.g. a DOCX export) and hand it to the browser to save. */
+export async function downloadFile(path: string, filename: string, retry = true): Promise<void> {
+  const headers = new Headers();
+  const token = read(ACCESS);
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}${path}`, { headers });
+  } catch {
+    throw new ApiError(0, "Cannot reach the KoylaSetu server. Please check that the API is running.");
+  }
+  if (res.status === 401 && retry && (await refreshTokens())) return downloadFile(path, filename, false);
+  if (!res.ok) throw new ApiError(res.status, await errorMessage(res));
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
+export function exportReport(id: string, format: "docx" | "pdf"): Promise<void> {
+  return downloadFile(`/reports/${id}/export?format=${format}`, `pq-reply-${id.slice(0, 8)}.${format}`);
+}
+
 export async function login(email: string, password: string): Promise<void> {
   const res = await fetch(`${API_URL}/auth/login`, {
     method: "POST",

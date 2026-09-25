@@ -24,6 +24,23 @@ The full technical spec is [docs/KoylaSetu_AI_Developer_Guide.docx](docs/KoylaSe
 
 Built so far:
 
+**PQ reply first draft** (guide 10.1-10.2), "New PQ reply" screen:
+- `POST /pq-replies/draft` (Analyst / Approver): paste house, question no., date, MP, subject
+  and question text; it is saved as a `parliament_questions` row and split into parts on
+  (a), (b)… or (क), (ख)… (the local model splits it only when there are no markers, and
+  its parts must be copied from the question)
+- Each part is answered through the Q&A service (`qa.ask`), so the same retrieval, routing
+  and grounding rules apply; a sentence with a figure not found in the sources is dropped,
+  and a part with no source says "Information not found in available documents"
+- Saved as a DRAFT `pq_reply` report: `content_json` has the header, one block per part
+  `{part, text, table, citations}`, a reply-wide sources list (S1, S2…: document + page)
+  and a plain `text` rendering for the report editor; tables with more than 6 rows become
+  Annexure-I, II…; every source is a `report_citations` row pointing at its fact or chunk
+- `GET /reports/{id}/export?format=docx|pdf` (export permission): official layout (Ministry
+  header, house, Starred/Unstarred Question No., date, subject, MP and parts, ANSWER, Minister
+  line placeholder, answers, annexures, internal sources list). DOCX via python-docx, PDF via
+  PyMuPDF (Hindi renders); unapproved reports carry a DRAFT line. Nothing is sent anywhere
+
 **Step 2: Q&A with citations** (guide section 9, text route), Ask screen + document viewer:
 - Hybrid search: Postgres full-text + pgvector (BGE-M3), merged with reciprocal rank fusion,
   always filtered to the user's org unit; top 6 passages
