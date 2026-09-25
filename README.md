@@ -209,7 +209,7 @@ policy has blocked this file"), reinstall it as pure Python inside the venv:
 
 **Local AI model (Ollama) without Docker:** install Ollama from https://ollama.com, then
 `ollama pull bge-m3` and `ollama pull qwen2.5:3b-instruct` (~3 GB), set
-`LLM_BASE_URL=http://localhost:11434` in `.env`, and check everything with
+`LLM_BASE_URL=http://127.0.0.1:11434` in `.env` (faster than `localhost` on Windows), and check with
 `cd backend && .venv/Scripts/python ../scripts/check_llm.py`. Per-OS install, disk/RAM notes
 and fixes: [docs/SETUP.md, section 10](docs/SETUP.md#10-local-ai-model-server-ollama-without-docker).
 

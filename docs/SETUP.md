@@ -231,6 +231,10 @@ on **this machine**. Nothing is sent to an outside AI company: `app/llm/client.p
 `LLM_BASE_URL` that is not this machine or the local network unless `ALLOW_EXTERNAL_CALLS=true`,
 and that setting must stay `false`.
 
+**`ALLOW_EXTERNAL_CALLS`** is the only switch that lets the app send text to a model server
+outside this machine / local network. It is `false` in the code default and in `.env.example`.
+Never set it to `true` on a machine with real documents; `scripts/check_llm.py` fails while it is.
+
 We need two models:
 
 | Model | Setting | Used for | Download |
@@ -243,15 +247,21 @@ We need two models:
 
 | | 3B + bge-m3 | 7B + bge-m3 |
 |---|---|---|
-| Disk | ~3 GB (plus ~1 GB for Ollama itself) | ~6 GB (plus ~1 GB) |
-| Free RAM while answering (CPU) | ~4-5 GB | ~7-8 GB |
-| Download at 50 Mbit/s | ~10 min | ~20 min |
-| Answer to a question (CPU laptop) | ~30-60 s | ~2-3x slower without a GPU |
+| Disk (models) | 3.1 GB (`ollama list`: 1.9 GB + 1.2 GB) | ~5.9 GB (4.7 GB + 1.2 GB) |
+| Disk (Ollama program) | ~1-2 GB (includes GPU libraries) | same |
+| Memory while loaded, `LLM_NUM_CTX=8192` | 2.3 GB + 0.7 GB (`ollama ps`) | ~5.5 GB + 0.7 GB |
+| RAM to have in the machine | 8 GB works, 16 GB comfortable | 16 GB, or a GPU with 8 GB |
+| Download time | 2 min 46 s + 4 min 28 s here (~7 MB/s) | ~12 min at the same speed |
+| Answer to a question | ~10 s on a laptop GPU (RTX 3050), ~30-60 s CPU only | GPU: ~2x the 3B time; CPU only: too slow, use 3B |
+
+Measured on a Windows 11 laptop (i7-12650H, 16 GB RAM, RTX 3050 Laptop GPU, Ollama 0.34.4);
+the 7B figures are estimates, it was not pulled here.
 
 Models are stored in `~/.ollama/models` (Windows: `C:\Users\<you>\.ollama\models`). Set the
 `OLLAMA_MODELS` environment variable before starting Ollama to keep them on another drive.
-The first question after starting takes longer: the model is loaded into memory then, and
-unloaded again after 5 idle minutes.
+The first call after starting takes longer: the model is loaded into memory then (here 31 s
+for `bge-m3`, 56 s for the 3B model the very first time, ~2 s after that), and unloaded again
+after 5 idle minutes.
 
 ### Install
 
@@ -276,7 +286,7 @@ ollama list                           # both should be listed
 In your `.env` (repo root or `backend/`):
 
 ```
-LLM_BASE_URL=http://localhost:11434
+LLM_BASE_URL=http://127.0.0.1:11434   # localhost also works; see the Windows note below
 LLM_MODEL=qwen2.5:3b-instruct         # must match a model in `ollama list`
 EMBED_MODEL=bge-m3
 ALLOW_EXTERNAL_CALLS=false
@@ -285,6 +295,12 @@ ALLOW_EXTERNAL_CALLS=false
 `.env.example` has `LLM_BASE_URL=http://ollama:11434`, which is the Docker service name and
 only works inside Docker Compose; change it to `localhost` when Ollama runs natively
 (`scripts/setup_local_db.py` from section 9 already does this when it creates your `.env`).
+Without any `.env` the code defaults are the same as the block above (with `localhost`).
+
+**Windows note:** Ollama listens on `127.0.0.1` only, and on Windows `localhost` is tried as
+IPv6 (`::1`) first, which costs about 2 s on **every** call. Measured with
+`scripts/check_llm.py`: server check 4.5 s with `localhost` vs 0.4 s with `127.0.0.1`, a
+warm embedding 2.3 s vs 0.3 s, a warm chat 2.7 s vs 0.7 s. Use `http://127.0.0.1:11434`.
 
 ### Check it
 
@@ -314,5 +330,7 @@ If documents were uploaded before `bge-m3` was pulled, fill in their embeddings 
 | `address already in use` / `Only one usage of each socket address` on `ollama serve` | Ollama is already running (app or service), or the Docker `ollama` container holds port 11434: stop one of them |
 | `model requires more system memory` | Close other apps, use the 3B model, or lower `LLM_NUM_CTX` to 4096 |
 | First answer takes minutes | The model is loading into memory; later answers are faster. On CPU the 7B model is slow; use 3B |
+| Every call takes ~2 s longer than it should (Windows) | Use `LLM_BASE_URL=http://127.0.0.1:11434` instead of `localhost` (see the Windows note) |
 | Download stops or is very slow | Run `ollama pull` again: it resumes where it stopped |
+| `ollama pull` fails with `lookup ... no such host` | A DNS / network blip (it happened once here): run the same `ollama pull` again |
 | Pulled models filled drive C: | Set `OLLAMA_MODELS` to a folder on another drive, restart Ollama, pull again |
