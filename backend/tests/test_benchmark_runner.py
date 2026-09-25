@@ -384,3 +384,11 @@ def test_official_answers_score_themselves():
         assert s["unsupported_numbers"] == []
         missed += [(e["id"], c["value"]) for c in s["expected"] if c["result"] != "found"]
     assert missed == [("LS-2019-12-11-U3749", 79)]
+
+
+def test_help_text_renders(capsys):
+    """argparse treats % in help strings as a format character; --help must not crash."""
+    with pytest.raises(SystemExit) as exit_info:
+        br.parse_args(["--help"])
+    assert exit_info.value.code == 0
+    assert "automation % (facts)" in capsys.readouterr().out
