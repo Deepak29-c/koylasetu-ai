@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     allow_external_calls: bool = False
     # Re-build the topics (guide 11) once this many new PQs have arrived since the last run.
     topics_min_new_pqs: int = 5
+    # Run background jobs inside the API process instead of RQ (no Redis, e.g. Windows without
+    # Docker). Jobs run one at a time on one thread.
+    ingest_inline: bool = False
 
     jwt_secret: str = "change-me"
     jwt_algorithm: str = "HS256"
