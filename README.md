@@ -87,6 +87,17 @@ facts), built in step 3.
   (`POST /topics/refresh`); by hand `python -m worker.topics --force`
 - `GET /topics/wordcloud?house=LS&from=2019&to=2025`, `GET /topics`, `GET /topics/{id}/questions`
 
+**Benchmark set** (guide 15.2, issue #16): `eval/pq_benchmark.jsonl` holds 34 real Lok Sabha
+coal questions (2018-2022) with the official written answer, the key figures in it (183 in
+all: value, unit and, for figures from tables or easy to confuse, an optional `label`), a topic
+and the coal.gov.in PDF it came from. Units come from one fixed list (MT, MTPA, MT/day,
+thousand tonnes, tonnes/year, tonnes/day, rakes/day, BU, MW, GW, %, Rs crore, Rs/tonne, days,
+years, count). Only PDFs with a clean text layer were used; scanned ones and ones with a
+garbled OCR layer were skipped. `python scripts/check_benchmark.py` (also run by pytest)
+checks the format `eval/run_eval.py` expects, the units, and that every expected value occurs
+in its official answer as a standalone number with the right sign. It does not check the unit
+or which cell was meant.
+
 **Setup (step 0):**
 - Docker Compose for all 6 services
 - All tables from guide section 6, plus the first Alembic migration
@@ -98,7 +109,7 @@ facts), built in step 3.
 - Seed script with demo users for all 6 roles
 
 Not built yet: validation rules + review queue + NUMERIC route (rest of step 3), reports,
-and the benchmark. Tables on scanned pages are not detected yet (OCR gives text only).
+and the benchmark runner (`eval/run_eval.py`, #11). Tables on scanned pages are not detected yet (OCR gives text only).
 PaddleOCR (`OCR_ENGINE=paddle`) currently falls back to Tesseract.
 
 ## Run with Docker (the normal way)
