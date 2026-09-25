@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     embed_model: str = "bge-m3"
     llm_num_ctx: int = 8192  # context window; must fit the prompt + ~6 passages
     ocr_engine: str = "paddle"
+    # Ask the local LLM to name a table's metric when the keyword rules find none (guide 7.2).
+    extract_use_llm: bool = True
     allow_external_calls: bool = False
 
     jwt_secret: str = "change-me"

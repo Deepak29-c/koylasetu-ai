@@ -55,6 +55,21 @@ facts), built in step 3.
 - Live progress (pages done / total); retry re-runs any finished document
 - `GET /documents/{id}/pages/{n}` (chunks + tables with boxes) and `/pages/{n}/image`
 
+**Tables → facts** (guide 7.2-7.4, step 10), runs in the same job:
+- Every number in a table becomes a fact: metric, subsidiary or state, period (FY or month),
+  category (Measured / Indicated / Inferred), value, unit, and its document, page and cell box
+- Read from the column header, row label and the title just above the table; handles merged
+  header cells, serial-number columns and sub-headers PyMuPDF puts inside the first data row
+- Units converted to MT / Mcum (lakh, thousand, million tonnes; cum), original unit kept;
+  subsidiary aliases (Mahanadi Coalfields / M.C.L. → MCL), FY and month forms, Hindi digits
+- Skipped on purpose rather than stored with the wrong meaning: %, growth, money and count
+  columns; "upto" / Apr-Nov ranges and projections; single mines, sectors, coal grades and
+  depth ranges; lignite; and any fact a table gives twice with different values
+- Confidence = OCR confidence × header mapping × 0.5 if the unit was not stated (guide 7.4);
+  the local LLM only names a table's metric when no keyword matches (`EXTRACT_USE_LLM`)
+- `GET /documents/{id}/facts`; `python -m worker.extract <document id>` rebuilds the facts
+  of a document processed before this existed
+
 **Setup (step 0):**
 - Docker Compose for all 6 services
 - All tables from guide section 6, plus the first Alembic migration
@@ -65,8 +80,9 @@ facts), built in step 3.
 - Frontend: login, home, upload (drag and drop, progress bar) and documents pages, with an English/Hindi toggle
 - Seed script with demo users for all 6 roles
 
-Not built yet: tables → facts + validation + review queue + NUMERIC route (step 3), reports,
-topics, and the benchmark. PaddleOCR (`OCR_ENGINE=paddle`) currently falls back to Tesseract.
+Not built yet: validation rules + review queue + NUMERIC route (rest of step 3), reports,
+topics, and the benchmark. Tables on scanned pages are not detected yet (OCR gives text only).
+PaddleOCR (`OCR_ENGINE=paddle`) currently falls back to Tesseract.
 
 ## Run with Docker (the normal way)
 

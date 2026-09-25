@@ -60,3 +60,13 @@ def test_me_lists_permissions(client_as):
     assert "approve_reports" in body["permissions"]
     assert "upload_documents" not in body["permissions"]
     assert body["org_unit"]["code"] == "CIL_HQ"
+
+
+def test_viewer_cannot_list_raw_facts(client_as):
+    doc_id = "00000000-0000-0000-0000-000000000001"
+    assert client_as(["viewer"]).get(f"/documents/{doc_id}/facts").status_code == 403
+
+
+def test_facts_needs_login():
+    doc_id = "00000000-0000-0000-0000-000000000001"
+    assert TestClient(app).get(f"/documents/{doc_id}/facts").status_code == 401
