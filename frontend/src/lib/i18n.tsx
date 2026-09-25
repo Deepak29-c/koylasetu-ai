@@ -81,6 +81,17 @@ const en = {
   "status.PROCESSED": "Done",
   "status.NEEDS_REVIEW": "Needs review",
   "status.FAILED": "Failed",
+  profile: "Profile",
+  changePassword: "Change password",
+  changePasswordHelp: "Choose a new password for your account. You'll need to log in again after.",
+  currentPassword: "Current password",
+  newPassword: "New password",
+  confirmNewPassword: "Confirm new password",
+  newPasswordTooShort: "New password must be at least 8 characters.",
+  passwordsDontMatch: "New passwords don't match.",
+  changePasswordButton: "Change password",
+  changingPassword: "Changing…",
+  passwordChanged: "Password changed. Please log in again.",
 };
 
 export type LabelKey = keyof typeof en;
@@ -127,6 +138,13 @@ const hi: Partial<Record<LabelKey, string>> = {
   "lang.en": "अंग्रेज़ी",
   "lang.hi": "हिंदी",
   "lang.mixed": "हिंदी + अंग्रेज़ी",
+  profile: "प्रोफ़ाइल",
+  changePassword: "पासवर्ड बदलें",
+  currentPassword: "मौजूदा पासवर्ड",
+  newPassword: "नया पासवर्ड",
+  confirmNewPassword: "नए पासवर्ड की पुष्टि करें",
+  changePasswordButton: "पासवर्ड बदलें",
+  changingPassword: "बदल रहा है…",
 };
 
 export type Lang = "en" | "hi";

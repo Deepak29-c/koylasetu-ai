@@ -65,9 +65,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               {lang === "en" ? "हिंदी" : "English"}
             </button>
             {me && (
-              <span className="opacity-90">
+              <Link href="/profile" className="opacity-90 hover:underline">
                 {me.name} · {me.org_unit.code}
-              </span>
+              </Link>
             )}
             <button
               onClick={() => {

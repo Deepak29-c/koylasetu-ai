@@ -174,6 +174,14 @@ export async function login(email: string, password: string): Promise<void> {
   saveTokens(await res.json());
 }
 
+export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  await api<void>("/me/password", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+  });
+}
+
 /** Multipart upload with a progress callback (fetch cannot report upload progress). */
 export function uploadDocuments(
   form: FormData,
