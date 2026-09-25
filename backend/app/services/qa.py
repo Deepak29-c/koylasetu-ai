@@ -165,7 +165,10 @@ def template_answer(facts: list[FactRow]) -> str:
         what = sorted({METRIC_LABELS.get(f.metric, f.metric) for f in facts})
         periods = sorted({f.period_text for f in facts})
         refs = "".join(f"[{f.ref}]" for f in facts)
-        lead = f"The {' and '.join(what)} figures for {', '.join(periods)}"
+        when = ", ".join(periods)
+        lead = (
+            f"The {' and '.join(what)} figures {'' if when.startswith('as on') else 'for '}{when}"
+        )
         return f"{lead} are given in the table below. {refs}"
     return " ".join(
         f"{f.who} {fact_line(f).split(' | ')[1]}, {f.period_text}: {fact_value(f)}"

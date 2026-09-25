@@ -17,7 +17,7 @@ from pathlib import Path
 import pymupdf
 from PIL import Image, ImageSequence
 
-from app.services.normalise import OTHER, find_unit
+from app.services.normalise import OTHER, find_period, find_unit
 from worker.ocr import OcrResult
 
 BBox = list[float]  # [x0, y0, x1, y1]
@@ -143,14 +143,43 @@ def _pdf_tables(page: pymupdf.Page, blocks: list[Block]) -> list[Table]:
         if len(rows) >= 2 and any(any(c for c in row) for row in rows):
             boxes = [[_round_box(c) for c in row.cells] for row in t.rows]
             box = _round_box(t.bbox)
-            tables.append(Table(rows, box, _title_above(box, blocks), boxes))
+            tables.append(
+                Table(rows, box, _with_page_date(_title_above(box, blocks), box, blocks), boxes)
+            )
     return tables
 
 
+# A heading line that is only a date, e.g. "(As on 01.04.2025)", printed once near the top of
+# a page for every table below it (National Coal Inventory, Table IV).
+_AS_ON_LINE = re.compile(r"\(?\s*as\s+on\s+(\d{1,2}[./-]\d{1,2}[./-]\d{4})\s*\)?", re.IGNORECASE)
+
+
+def _with_page_date(title: str | None, box: BBox, blocks: list[Block]) -> str | None:
+    """Add the page's "As on <date>" heading to a table title that names no period. Only
+    when exactly one such date line is printed above the table; two different dates, or a
+    date inside a sentence, change nothing."""
+    if not find_period(title).empty:
+        return title
+    top = box[1]
+    dates = {
+        m.group(1)
+        for b in blocks
+        if b.bbox and b.bbox[3] <= top + 2
+        for line in b.text.splitlines()
+        if (m := _AS_ON_LINE.fullmatch(line.strip()))
+    }
+    if len(dates) != 1:
+        return title
+    return f"{title or ''} (As on {dates.pop()})".strip()
+
+
 def _is_running_header(block: Block, running: set[str] | frozenset[str]) -> bool:
-    """A repeated page header, unless it states a unit ("Fig. in MT"): that is kept."""
+    """A repeated page header, unless it states a unit ("Fig. in MT") or an "As on" date
+    ("(As on 01.04.2025)" on every page of the Coal Inventory): those are kept."""
     keys = [k for k in map(_line_key, block.text.splitlines()) if k]
     if not keys or not all(k in running for k in keys):
+        return False
+    if any(_AS_ON_LINE.fullmatch(line.strip()) for line in block.text.splitlines()):
         return False
     unit = find_unit(block.text)
     return unit is None or unit.kind == OTHER

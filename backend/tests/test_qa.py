@@ -327,6 +327,17 @@ def test_many_figures_become_a_table_without_calling_the_model():
     assert len(result.citations) == 8 and result.grounded and len(result.table["rows"]) == 8
 
 
+def test_table_lead_reads_well_for_as_on_resources():
+    rows = [
+        fact_row(f"F{i}", None, "coal_resource", "2025-04", f"{i}.5")
+        for i in range(1, qa.TABLE_ONLY_ROWS + 2)
+    ]
+    assert qa.template_answer(rows).startswith("The coal resource figures as on Apr 2025 are")
+    assert "figures for Dec 2024" in qa.template_answer(
+        [fact_row(f"F{i}", "NCL", "coal_production", "2024-12", "1") for i in range(1, 9)]
+    )
+
+
 def test_model_down_still_answers_figures():
     def down(*_):
         raise client.LlmUnavailable("no model")
