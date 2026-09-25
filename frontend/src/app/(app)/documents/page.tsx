@@ -17,7 +17,7 @@ const STATUS_STYLE: Record<DocumentStatus, string> = {
 
 export default function DocumentsPage() {
   const me = useMe();
-  const { t } = useT();
+  const { t, locale } = useT();
   const [docs, setDocs] = useState<DocumentRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const allowed = me.permissions.includes("view_processing");
@@ -97,7 +97,7 @@ export default function DocumentsPage() {
                     {d.page_count ? `${d.pages_done} / ${d.page_count}` : "—"}
                   </td>
                   <td className="px-4 py-2 whitespace-nowrap">
-                    {new Date(d.created_at).toLocaleString("en-IN")}
+                    {new Date(d.created_at).toLocaleString(locale)}
                   </td>
                   <td className="px-4 py-2">
                     {(d.status === "FAILED" || d.status === "UPLOADED") &&

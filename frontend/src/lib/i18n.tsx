@@ -664,5 +664,7 @@ export function setLang(lang: Lang) {
 export function useT() {
   const lang = useSyncExternalStore(subscribe, getLang, () => "en" as Lang);
   const t = (key: LabelKey): string => (lang === "hi" && hi[key]) || en[key];
-  return { t, lang };
+  // For toLocaleString: a date written in Devanagari script when the UI is Hindi.
+  const locale = lang === "hi" ? "hi-IN" : "en-IN";
+  return { t, lang, locale };
 }

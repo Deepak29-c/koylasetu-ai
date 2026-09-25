@@ -19,7 +19,7 @@ const STATUS_STYLE: Record<ReportStatus, string> = {
 
 export default function ReportsPage() {
   const me = useMe();
-  const { t } = useT();
+  const { t, locale } = useT();
   const canView =
     me.permissions.includes("edit_reports") ||
     me.permissions.includes("approve_reports") ||
@@ -186,7 +186,7 @@ export default function ReportsPage() {
                   </td>
                   <td className="px-4 py-2">{r.due_date ?? "—"}</td>
                   <td className="px-4 py-2 whitespace-nowrap">
-                    {new Date(r.created_at).toLocaleString("en-IN")}
+                    {new Date(r.created_at).toLocaleString(locale)}
                   </td>
                   {canExport && (
                     <td className="px-4 py-2 whitespace-nowrap">

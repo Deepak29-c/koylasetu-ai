@@ -214,7 +214,7 @@ export default function HomePage() {
 
       <dl className="grid max-w-xl grid-cols-[max-content_1fr] gap-x-6 gap-y-2 rounded border bg-white p-4 text-sm">
         <dt className="text-gray-500">{t("yourRoles")}</dt>
-        <dd className="capitalize">{me.roles.join(", ")}</dd>
+        <dd>{me.roles.map((r) => t(`role.${r}` as LabelKey)).join(", ")}</dd>
         <dt className="text-gray-500">{t("yourUnit")}</dt>
         <dd>
           {me.org_unit.name} ({me.org_unit.code})

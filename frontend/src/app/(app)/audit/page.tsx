@@ -14,7 +14,7 @@ import { useT } from "@/lib/i18n";
 
 export default function AuditLogPage() {
   const me = useMe();
-  const { t } = useT();
+  const { t, locale } = useT();
   const allowed = me.permissions.includes("view_audit");
 
   const [rows, setRows] = useState<AuditLogRow[] | null>(null);
@@ -142,7 +142,7 @@ export default function AuditLogPage() {
                 <Fragment key={r.id}>
                   <tr className="border-t align-top hover:bg-gray-50">
                     <td className="px-4 py-2 whitespace-nowrap">
-                      {new Date(r.created_at).toLocaleString("en-IN")}
+                      {new Date(r.created_at).toLocaleString(locale)}
                     </td>
                     <td className="px-4 py-2">
                       {r.user ? (
