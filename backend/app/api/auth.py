@@ -19,11 +19,16 @@ def login(body: LoginIn, request: Request, db: Session = Depends(get_db)) -> Tok
     user = db.scalar(select(User).where(User.email == body.email))
     if user is None or not user.is_active or not verify_password(body.password, user.password_hash):
         audit.record(
-            db, "login_failed", user_id=None, details={"email": body.email}, request=request
+            db,
+            "login_failed",
+            actor=None,
+            org_unit_id=user.org_unit_id if user else None,
+            details={"email": body.email},
+            request=request,
         )
         db.commit()
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Wrong email or password")
-    audit.record(db, "login", user_id=user.id, entity="user", entity_id=user.id, request=request)
+    audit.record(db, "login", actor=user, entity="user", entity_id=user.id, request=request)
     db.commit()
     return TokenOut(
         access_token=create_token(user.id, "access"),
@@ -69,6 +74,6 @@ def change_password(
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Current password is wrong")
     user.password_hash = hash_password(body.new_password)
     audit.record(
-        db, "change_password", user_id=user.id, entity="user", entity_id=user.id, request=request
+        db, "change_password", actor=user, entity="user", entity_id=user.id, request=request
     )
     db.commit()

@@ -57,7 +57,7 @@ def create_user(
     audit.record(
         db,
         "create_user",
-        user_id=user.id,
+        actor=user,
         entity="user",
         entity_id=new_user.id,
         details={"email": new_user.email, "roles": new_user.roles},
@@ -95,7 +95,7 @@ def update_user(
         audit.record(
             db,
             "update_user",
-            user_id=user.id,
+            actor=user,
             entity="user",
             entity_id=target.id,
             details=changes,
