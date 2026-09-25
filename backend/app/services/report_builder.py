@@ -5,8 +5,8 @@ sources list. This module holds what they share:
 
 - `FactRow` and `fetch_facts`: the one facts query, org-scoped through the fact's document
   (a user sees facts from their unit's documents and from public documents, like every other
-  query). It reads only metric, subsidiary, period, status, value_std, document and page, so it
-  keeps working when the facts table gains columns.
+  query). It reads only metric, subsidiary, period (+ its type: a YTD fact has the same
+  "2024-12" period text as the month), status, value_std, document and page.
 - `DocSources`: numbers sources S1, S2… by document page. Several facts from the same page
   share one number; every fact / chunk used is still its own `report_citations` row, and the
   row's location ends with ":S<n>" so the list can be rebuilt after a plain-text edit.
@@ -63,6 +63,7 @@ class FactRow:
     document_id: uuid.UUID
     document: str
     page: int
+    period_type: str | None = None  # MONTH / FY (YTD and AS_ON share the same period text)
 
     @property
     def verified(self) -> bool:
@@ -92,6 +93,7 @@ def fetch_facts(
             Fact.document_id,
             Document.title,
             Fact.page_no,
+            Fact.period_type,
         )
         .join(Document, Document.id == Fact.document_id)
         .where(Fact.metric.in_(metrics), Fact.status != FactStatus.REJECTED)
@@ -113,6 +115,7 @@ def fetch_facts(
             document_id=r[7],
             document=r[8],
             page=r[9],
+            period_type=getattr(r[10], "value", r[10]),
         )
         for r in db.execute(stmt).all()
     ]

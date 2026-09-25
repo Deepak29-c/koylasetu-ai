@@ -77,6 +77,44 @@ export type PageData = {
   tables: { id: string; table_title: string | null; bbox: number[] | null; rows_json: string[][] }[];
 };
 
+export type Fact = {
+  id: string;
+  metric: string;
+  subsidiary: string | null;
+  state: string | null;
+  category: string | null;
+  period_type: string | null;
+  period: string | null;
+  value_raw: string;
+  value: number;
+  unit: string | null;
+  value_std: number | null;
+  status: "EXTRACTED" | "FLAGGED" | "VERIFIED" | "REJECTED";
+  confidence: number;
+  document_id: string;
+  page_no: number;
+  bbox: number[] | null;
+  label: string | null;
+};
+
+export type ReviewItem = {
+  fact: Fact;
+  document_title: string;
+  issues: { id: string; rule_code: string; message: string; severity: "high" | "medium" | "low"; status: string }[];
+  related: (Fact & { document_title: string })[];
+  worst_severity: "high" | "medium" | "low";
+  created_at: string;
+};
+
+export type ReviewSummary = {
+  total_facts: number;
+  auto_verified: number;
+  flagged: number;
+  reviewed_verified: number;
+  rejected: number;
+  automation_percent: number | null;
+};
+
 export type AuditLogRow = {
   id: string;
   created_at: string;

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { useMe } from "@/components/AppShell";
+import ConfirmDialog from "@/components/ConfirmDialog";
 import {
   ALL_ROLES,
   ApiError,
@@ -142,13 +143,22 @@ export default function AdminUsersPage() {
     }
   }
 
+  // Deactivating locks someone out, so it is confirmed first. Reactivating is harmless
+  // and stays a single click.
+  const [confirmDeactivate, setConfirmDeactivate] = useState<UserRow | null>(null);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+
   async function toggleActive(u: UserRow) {
     setError(null);
+    setConfirmDeactivate(null);
+    setTogglingId(u.id);
     try {
       await updateUser(u.id, { is_active: !u.is_active });
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : String(err));
+    } finally {
+      setTogglingId(null);
     }
   }
 
@@ -322,8 +332,10 @@ export default function AdminUsersPage() {
                             {t("edit")}
                           </button>
                           <button
-                            onClick={() => toggleActive(u)}
-                            disabled={u.id === me.id && u.is_active}
+                            onClick={() =>
+                              u.is_active ? setConfirmDeactivate(u) : toggleActive(u)
+                            }
+                            disabled={(u.id === me.id && u.is_active) || togglingId === u.id}
                             title={u.id === me.id && u.is_active ? t("cannotDeactivateSelf") : undefined}
                             className="text-xs text-brand underline disabled:cursor-not-allowed disabled:text-gray-400 disabled:no-underline"
                           >
@@ -339,6 +351,18 @@ export default function AdminUsersPage() {
             </tbody>
           </table>
         </div>
+      )}
+
+      {confirmDeactivate && (
+        <ConfirmDialog
+          title={t("users.deactivateConfirm")}
+          body={`${confirmDeactivate.name} (${confirmDeactivate.email}) — ${t("users.deactivateConfirmBody")}`}
+          confirmLabel={t("deactivate")}
+          danger
+          busy={togglingId === confirmDeactivate.id}
+          onConfirm={() => toggleActive(confirmDeactivate)}
+          onCancel={() => setConfirmDeactivate(null)}
+        />
       )}
     </div>
   );

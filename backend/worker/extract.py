@@ -30,8 +30,8 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.llm import client as llm
-from app.models import ExtractedTable, Fact, Page
-from app.models.enums import FactStatus, Metric, PeriodType
+from app.models import Document, ExtractedTable, Fact, Page
+from app.models.enums import DocumentStatus, FactStatus, Metric, PeriodType
 from app.services.normalise import (
     ALL_INDIA,
     CIL_SUBSIDIARIES,
@@ -331,6 +331,7 @@ class FactDraft:
     row: int
     col: int
     bbox: BBox | None
+    label: str = ""  # "row label · column label", shown to the Reviewer
 
 
 MetricClassifier = Callable[[str, list[str], list[str]], Metric | None]
@@ -441,6 +442,7 @@ def facts_from_table(
                     row=i,
                     col=j,
                     bbox=box or table_bbox,
+                    label=" · ".join(t for t in (clean_text(row.text), clean_text(col.text)) if t),
                 )
             )
     _date_targets(drafts, col_labels)
@@ -644,6 +646,7 @@ def save_facts(
                 page_no=table.page_no,
                 bbox=d.bbox,
                 table_id=table.id,
+                label=d.label or None,
             )
         )
     return len(drafts)
@@ -669,11 +672,25 @@ def extract_table(
 
 def extract_document(document_id: str) -> int:
     """Worker job: (re)build the facts of an already processed document from its saved
-    tables, e.g. documents ingested before fact extraction existed. Returns the fact count."""
+    tables, e.g. documents ingested before fact extraction existed, then re-run the
+    validation rules. Returns the fact count. Refuses once a reviewer has acted on the
+    document's facts, so no human decision is lost."""
     from app.core.db import SessionLocal
+    from app.models import ReviewActionLog
+    from worker.validate import validate_document
 
     doc_id = uuid.UUID(document_id)
     with SessionLocal() as db:
+        reviewed = db.scalar(
+            select(ReviewActionLog.id)
+            .join(Fact, Fact.id == ReviewActionLog.fact_id)
+            .where(Fact.document_id == doc_id)
+            .limit(1)
+        )
+        if reviewed is not None:
+            raise RuntimeError(
+                f"{document_id}: a reviewer has already checked its figures; not rebuilt"
+            )
         db.execute(delete(Fact).where(Fact.document_id == doc_id))
         confidence = {
             p.page_no: p.ocr_confidence
@@ -688,6 +705,12 @@ def extract_document(document_id: str) -> int:
         )
         for table in tables:
             total += extract_table(db, doc_id, table, confidence.get(table.page_no), classify)
+        db.flush()
+        issues = validate_document(db, doc_id)
+        doc = db.get(Document, doc_id)
+        finished = (DocumentStatus.PROCESSED, DocumentStatus.NEEDS_REVIEW)
+        if doc is not None and doc.status in finished:
+            doc.status = DocumentStatus.NEEDS_REVIEW if issues else DocumentStatus.PROCESSED
         db.commit()
         return total
 

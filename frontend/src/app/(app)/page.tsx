@@ -50,13 +50,12 @@ function attentionTiles(summary: DashboardSummary): Tile[] {
     );
   }
   if (review) {
-    // No href yet: the review screen is not built. Give it one the moment that screen lands.
     tiles.push({
       key: "facts",
       count: review.pending_facts,
       label: "dash.pendingFacts",
+      href: "/review",
       tone: review.flagged_facts > 0 ? "warn" : "plain",
-      note: "dash.reviewScreenPending",
     });
   }
   if (documents) {

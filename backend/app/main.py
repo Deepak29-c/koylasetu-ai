@@ -10,6 +10,7 @@ from app.api import (
     qa,
     report_drafts,
     reports,
+    review,
     topics,
     users,
 )
@@ -32,6 +33,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(documents.router)
 app.include_router(qa.router)
+app.include_router(review.router)
 app.include_router(audit.router)
 app.include_router(users.router)
 app.include_router(report_drafts.router)  # before /reports/{id} routes

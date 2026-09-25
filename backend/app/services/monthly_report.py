@@ -160,9 +160,12 @@ class Row:
 
 
 def index_facts(facts: list[FactRow]) -> dict[tuple[str, str | None, str | None], list[FactRow]]:
+    """Month facts by (metric, subsidiary, period). April-to-date (YTD) facts carry the same
+    "2024-12" period text, so only MONTH facts (or untyped ones) are used."""
     out: dict[tuple, list[FactRow]] = {}
     for f in facts:
-        out.setdefault((f.metric, f.subsidiary, f.period), []).append(f)
+        if f.period_type in (None, "MONTH"):
+            out.setdefault((f.metric, f.subsidiary, f.period), []).append(f)
     return out
 
 

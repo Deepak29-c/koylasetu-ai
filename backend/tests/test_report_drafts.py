@@ -28,7 +28,17 @@ from tests.test_pq_reply import FakeSession
 DOC_A, DOC_B = uuid.uuid4(), uuid.uuid4()
 
 
-def fact(metric, sub, period, value, status="VERIFIED", doc=DOC_A, page=1, confidence=1.0):
+def fact(
+    metric,
+    sub,
+    period,
+    value,
+    status="VERIFIED",
+    doc=DOC_A,
+    page=1,
+    confidence=1.0,
+    period_type=None,
+):
     return FactRow(
         id=uuid.uuid4(),
         metric=metric,
@@ -40,6 +50,7 @@ def fact(metric, sub, period, value, status="VERIFIED", doc=DOC_A, page=1, confi
         document_id=doc,
         document="Monthly Coal Statistics - December 2024" if doc == DOC_A else "Coal Directory",
         page=page,
+        period_type=period_type or ("FY" if period.startswith("FY") else "MONTH"),
     )
 
 
@@ -119,6 +130,15 @@ def test_verified_fact_beats_a_more_confident_extracted_one_and_rejected_is_igno
     assert mcl[2] == "21.51*"  # unverified figures are labelled
     assert report_builder.UNVERIFIED_NOTE in content["text"]
     assert any("NCL coal production" in w for w in content["warnings"])
+
+
+def test_april_to_date_facts_with_the_same_period_text_are_not_the_month():
+    facts = [
+        fact("coal_production", "CIL", "2024-12", 543.36, period_type="YTD"),
+        fact("coal_production", "CIL", "2024-12", 72.37),
+    ]
+    assert rows_by_code(facts)["CIL"].actual.value == 72.37
+    assert rows_by_code(facts[:1])["CIL"].actual.fact is None
 
 
 def test_units_come_from_value_std_and_unconvertible_facts_are_skipped():

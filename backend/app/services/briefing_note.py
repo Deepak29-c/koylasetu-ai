@@ -140,9 +140,11 @@ def period_label(period: str) -> str:
 
 
 def _group(facts: list[FactRow]) -> dict[tuple[str, str | None, str | None], list[FactRow]]:
+    """Month and FY facts only (a YTD fact shares the month's period text)."""
     out: dict[tuple, list[FactRow]] = {}
     for f in facts:
-        out.setdefault((f.metric, f.subsidiary, f.period), []).append(f)
+        if f.period_type in (None, "MONTH", "FY"):
+            out.setdefault((f.metric, f.subsidiary, f.period), []).append(f)
     return out
 
 
