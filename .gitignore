@@ -40,3 +40,5 @@ next-env.d.ts
 .idea/
 .DS_Store
 Thumbs.db
+# koylasetu.bat: portable Postgres, database, uploads and logs for local runs
+.localdev/

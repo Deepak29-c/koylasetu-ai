@@ -143,6 +143,35 @@ All use the password you set in `SEED_DEMO_PASSWORD`.
 - Open a pull request into `dev`, get one review, CI must pass.
 - Never commit `.env`, data files or model files.
 
+## 8a. Windows: one file to start or stop everything
+
+Double-click **`koylasetu.bat`** in the repo root. Press **Enter** to start, or type **S** and Enter to stop.
+
+Start brings up, in order: the database, Ollama with the models named in `.env` (downloaded
+once if missing), the API on port 8000 and the website on port 3000, then opens
+http://localhost:3000. Anything already running is left alone. After a `git pull` it installs
+changed Python / npm packages and runs the database migrations. Stop shuts down the website,
+the API and the local database (Ollama keeps running as a normal Windows app).
+
+**First run on a fresh clone** (no Docker needed): it creates `.env` with local settings and a
+random `JWT_SECRET`, creates `backend\.venv`, installs a portable **Postgres 16 + pgvector**
+into `.localdev\` (git-ignored, no admin rights), and creates and seeds the database with the
+demo users. If `.env` already points at a running Postgres (for example Docker's `db`), that
+one is used instead. The API processes uploads itself (`INGEST_INLINE=true`), because Redis and
+the RQ worker don't run on Windows.
+
+| Needs | Install |
+|---|---|
+| Python 3.11+ with the `py` launcher (3.10-3.12 also needed once, for the portable Postgres) | python.org |
+| Node.js 20+ | `winget install OpenJS.NodeJS.LTS` |
+| Ollama | `winget install Ollama.Ollama` |
+| Tesseract (optional: scanned PDFs) | `winget install UB-Mannheim.TesseractOCR` |
+
+Logs are in `.localdev\logs\`; the API and website each run in their own minimized window.
+To load the public starter documents after the first start:
+`backend\.venv\Scripts\python scripts\fetch_sources.py`, then
+`backend\.venv\Scripts\python scripts\load_sources.py`.
+
 ## 9. Run without Docker
 
 For machines where Docker is not wanted. You need three things running locally: PostgreSQL 16
