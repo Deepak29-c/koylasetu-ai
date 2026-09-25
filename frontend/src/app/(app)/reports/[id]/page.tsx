@@ -9,6 +9,7 @@ import ConfirmDialog from "@/components/ConfirmDialog";
 import {
   ApiError,
   approveReport,
+  exportReport,
   getReport,
   listReportVersions,
   rejectReport,
@@ -41,6 +42,7 @@ export default function ReportDetailPage() {
     me.permissions.includes("export_reports");
   const canEdit = me.permissions.includes("edit_reports");
   const canApprove = me.permissions.includes("approve_reports");
+  const canExport = me.permissions.includes("export_reports");
 
   const [report, setReport] = useState<ReportRow | null>(null);
   const [versions, setVersions] = useState<ReportVersionRow[]>([]);
@@ -129,6 +131,21 @@ export default function ReportDetailPage() {
       setActionError(err instanceof ApiError ? err.message : String(err));
     } finally {
       setApproving(false);
+    }
+  }
+
+  // Downloading is the last step of the workflow and the only thing a Viewer can do here.
+  const [exporting, setExporting] = useState<"docx" | "pdf" | null>(null);
+  async function doExport(format: "docx" | "pdf") {
+    setExporting(format);
+    setActionError(null);
+    try {
+      await exportReport(id, format);
+      await load();
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : String(err));
+    } finally {
+      setExporting(null);
     }
   }
 
@@ -289,6 +306,27 @@ export default function ReportDetailPage() {
           </div>
         )}
       </div>
+
+      {canExport && (
+        <div className="rounded border bg-white p-4">
+          <h2 className="mb-1 font-medium">{t("report.export")}</h2>
+          <p className="mb-3 text-sm text-gray-600">{t("report.exportHelp")}</p>
+          <div className="flex flex-wrap gap-3">
+            {(["docx", "pdf"] as const).map((format) => (
+              <button
+                key={format}
+                onClick={() => doExport(format)}
+                disabled={exporting !== null}
+                className="rounded border border-brand px-4 py-2 text-sm font-medium text-brand disabled:opacity-60"
+              >
+                {exporting === format
+                  ? t("report.exporting")
+                  : t(format === "docx" ? "report.exportDocx" : "report.exportPdf")}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="rounded border bg-white p-4">
         <h2 className="mb-2 font-medium">{t("versionHistory")}</h2>

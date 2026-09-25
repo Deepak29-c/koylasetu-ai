@@ -203,6 +203,15 @@ def _db_sources(db: Session, report_id: uuid.UUID) -> list[dict]:
     return pq_reply.sources_from_links([tuple(r) for r in rows])
 
 
+def status_after_export(current: ReportStatus) -> ReportStatus:
+    """ReportStatus.EXPORTED existed but nothing could ever set it - this is what does.
+
+    Only an approved report becomes EXPORTED. Exporting a draft is a preview and should
+    not look like the end of the workflow, and re-exporting leaves the status alone.
+    """
+    return ReportStatus.EXPORTED if current == ReportStatus.APPROVED else current
+
+
 def export_statement(report_id: uuid.UUID, user: User):
     """The org-scoped query for the report to export (a user outside the unit gets a 404)."""
     return scope_to_user(select(Report).where(Report.id == report_id), Report, user)
@@ -230,13 +239,15 @@ def export_report(
         data, mime = report_export.to_pdf(items), report_export.PDF_MIME
     else:
         data, mime = report_export.to_docx(items), report_export.DOCX_MIME
+    was = report.status
+    report.status = status_after_export(was)
     audit.record(
         db,
         "export_report",
         actor=user,
         entity="report",
         entity_id=report.id,
-        details={"format": format, "status": report.status.value},
+        details={"format": format, "status": was.value},
         request=request,
     )
     db.commit()

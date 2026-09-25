@@ -28,6 +28,9 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    # Without this the browser cannot read the filename the export endpoint sets, and
+    # every download is saved under whatever name the frontend guessed.
+    expose_headers=["Content-Disposition"],
 )
 
 app.include_router(auth.router)
