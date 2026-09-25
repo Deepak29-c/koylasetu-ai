@@ -16,14 +16,14 @@ from fastapi import (
     status,
 )
 from PIL import Image
-from sqlalchemy import select
+from sqlalchemy import exists, select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.db import get_db
 from app.core.deps import require, scope_to_user, sees_all_units
 from app.core.rbac import Permission, Role
-from app.models import Chunk, Document, ExtractedTable, Page, User
+from app.models import Chunk, Document, ExtractedTable, Fact, Page, ReviewActionLog, User
 from app.models.enums import DocType, DocumentStatus
 from app.schemas.document import ChunkOut, DocumentOut, PageOut, TableOut, UploadResult
 from app.services import audit, file_types, storage
@@ -261,6 +261,15 @@ def retry_document(
     # clears its earlier results first. Only a document being processed right now is blocked.
     if doc.status == DocumentStatus.PROCESSING:
         raise HTTPException(status.HTTP_409_CONFLICT, "Document is being processed right now")
+    reviewed = db.scalar(
+        select(exists().where(ReviewActionLog.fact_id == Fact.id, Fact.document_id == doc.id))
+    )
+    if reviewed:
+        # Re-processing replaces the document's facts; never silently discard human decisions.
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "A reviewer has already checked figures from this document; it can't be re-processed",
+        )
     doc.status, doc.error_message, doc.pages_done = DocumentStatus.UPLOADED, None, 0
     audit.record(db, "retry", user_id=user.id, entity="document", entity_id=doc.id, request=request)
     db.commit()

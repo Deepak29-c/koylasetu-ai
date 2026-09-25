@@ -35,6 +35,9 @@ class Table:
     rows: list[list[str]]
     bbox: BBox | None = None
     title: str | None = None
+    # Box of every cell, same shape as rows (None where unknown, e.g. Excel). Lets a fact point
+    # at the exact cell it was copied from.
+    cells: list[list[BBox | None]] | None = None
 
 
 @dataclass
@@ -102,7 +105,10 @@ def _pdf_tables(page: pymupdf.Page) -> list[Table]:
     for t in found.tables:
         rows = [[_cell(c) for c in row] for row in t.extract()]
         if len(rows) >= 2 and any(any(c for c in row) for row in rows):
-            tables.append(Table(rows, [round(v, 2) for v in t.bbox]))
+            cells = [[[round(v, 2) for v in c] if c else None for c in row.cells] for row in t.rows]
+            if len(cells) != len(rows):  # header outside the table body: boxes unknown
+                cells = None
+            tables.append(Table(rows, [round(v, 2) for v in t.bbox], cells=cells))
     return tables
 
 

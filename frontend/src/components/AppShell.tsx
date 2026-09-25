@@ -30,12 +30,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     });
   }, [router]);
 
+  // Menu shows only what the user's role can open (the API checks again on every request).
   const nav = [
     { href: "/", label: t("home") },
-    { href: "/ask", label: t("ask") },
-    { href: "/upload", label: t("upload") },
-    { href: "/documents", label: t("documents") },
-  ];
+    { href: "/ask", label: t("ask"), perm: "ask_questions" },
+    { href: "/upload", label: t("upload"), perm: "upload_documents" },
+    { href: "/documents", label: t("documents"), perm: "view_processing" },
+    { href: "/review", label: t("review"), perm: "review_facts" },
+  ].filter((n) => !n.perm || me?.permissions.includes(n.perm));
 
   return (
     <div className="flex min-h-full flex-1 flex-col">

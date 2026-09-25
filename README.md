@@ -23,6 +23,27 @@ The full technical spec is [docs/KoylaSetu_AI_Developer_Guide.docx](docs/KoylaSe
 
 Built so far:
 
+**Step 3a: facts, validation, review queue** (guide 7.2-7.4, 8, W2):
+- Tables → facts by keyword rules; numbers are copied from the cell by code, with the cell's
+  bbox, so each figure can be highlighted on its page. Glued two-row headers are split,
+  spanning headers filled across, stacked rows ("Jharkhand / Chhattisgarh") split
+- Layouts supported today: subsidiary tables (production, coking coal, despatch, target;
+  month / year-to-date / FY) and state-wise resource tables (Measured / Indicated / Inferred /
+  Total, "as on" date, coking coal kept separate). Other tables produce no facts
+- Normalisation: units → MT (lakh ×0.1, thousand ÷1000, billion ×1000) or Mcum, Indian/western
+  digit grouping, Hindi digits, subsidiary and state aliases, month → YYYY-MM within the FY
+- Confidence = cell confidence × header mapping × 0.5 if the unit was guessed; < 0.85 flagged
+- Rules V01-V08 (totals, conflicts between documents, impossible values, unit, confidence,
+  ±50 % year-on-year, duplicates, unknown period). Facts with no issue are accepted
+  automatically; the rest go to the Reviewer. Document status NEEDS_REVIEW until resolved
+- Review screen: source page with the cell highlighted, the value, why it was flagged, the
+  other source's value; Accept / Correct / Reject (comment required for the last two), all
+  logged in review_actions + audit_log. A reviewed document can no longer be re-processed
+- `/review/summary` gives the automation % (facts accepted automatically ÷ all facts)
+
+On the two documents processed so far (Monthly Coal Statistics Dec 2024, Coal Inventory 2025):
+200 facts, 199 accepted automatically. That is 2 clean digital documents, not a benchmark result.
+
 **Step 2: Q&A with citations** (guide section 9, text route), Ask screen + document viewer:
 - Hybrid search: Postgres full-text + pgvector (BGE-M3), merged with reciprocal rank fusion,
   always filtered to the user's org unit; top 6 passages
@@ -65,7 +86,7 @@ facts), built in step 3.
 - Frontend: login, home, upload (drag and drop, progress bar) and documents pages, with an English/Hindi toggle
 - Seed script with demo users for all 6 roles
 
-Not built yet: tables → facts + validation + review queue + NUMERIC route (step 3), reports,
+Not built yet: NUMERIC route (step 3b), reports,
 topics, and the benchmark. PaddleOCR (`OCR_ENGINE=paddle`) currently falls back to Tesseract.
 
 ## Run with Docker (the normal way)

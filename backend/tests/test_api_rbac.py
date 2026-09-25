@@ -60,3 +60,16 @@ def test_me_lists_permissions(client_as):
     assert "approve_reports" in body["permissions"]
     assert "upload_documents" not in body["permissions"]
     assert body["org_unit"]["code"] == "CIL_HQ"
+
+
+def test_only_reviewer_or_admin_can_open_review_queue(client_as):
+    assert client_as(["analyst"]).get("/review/issues").status_code == 403
+    assert client_as(["viewer"]).post("/review/facts/00000000-0000-0000-0000-000000000000",
+                                      json={"action": "ACCEPT"}).status_code == 403  # fmt: skip
+
+
+def test_edit_and_reject_need_a_comment(client_as):
+    url = "/review/facts/00000000-0000-0000-0000-000000000000"
+    reviewer = client_as(["reviewer"])
+    assert reviewer.post(url, json={"action": "REJECT"}).status_code == 422
+    assert reviewer.post(url, json={"action": "EDIT", "comment": "typo"}).status_code == 422
