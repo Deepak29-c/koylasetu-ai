@@ -4,23 +4,26 @@ import uuid
 from types import SimpleNamespace
 
 import pytest
+from fastapi import HTTPException
 
 from app.api import review
 from app.models import AuditLog, ReviewActionLog
-from app.models.enums import DocumentStatus, FactStatus
+from app.models.enums import DocumentStatus, FactStatus, ReviewAction
 from app.schemas.review import ReviewDecision
 
 
 class FakeDb:
-    def __init__(self):
+    def __init__(self, earlier=None):
         self.added = []
         self.committed = False
+        # db.scalar is asked twice: the fact's earlier decision, then "open issues left?"
+        self._scalars = [earlier, False]
 
     def scalars(self, _stmt):
         return []  # no open validation issues left on the fact
 
     def scalar(self, _stmt):
-        return False  # none left on the document either
+        return self._scalars.pop(0)
 
     def add(self, row):
         self.added.append(row)
@@ -65,3 +68,28 @@ def test_edit_scales_the_standard_value(setup):
     decision = ReviewDecision(action="EDIT", new_value="1280", comment="typo")
     review.decide(fact.id, decision, None, user, FakeDb())
     assert (fact.value, fact.value_std, fact.status) == (1280.0, 128.0, FactStatus.VERIFIED)
+
+
+def test_changing_an_earlier_decision_needs_a_comment(setup):
+    fact, _, user = setup
+    with pytest.raises(HTTPException) as err:
+        review.decide(
+            fact.id, ReviewDecision(action="ACCEPT"), None, user, FakeDb(ReviewAction.REJECT)
+        )
+    assert err.value.status_code == 422
+
+
+def test_changed_decision_is_recorded_with_what_it_replaced(setup):
+    fact, _, user = setup
+    fact.status = FactStatus.VERIFIED  # accepted earlier by mistake
+    db = FakeDb(ReviewAction.ACCEPT)
+    decision = ReviewDecision(action="REJECT", comment="wrong column: this is the total")
+    review.decide(fact.id, decision, None, user, db)
+    (audit,) = [r for r in db.added if isinstance(r, AuditLog)]
+    assert fact.status == FactStatus.REJECTED
+    assert audit.details_json["changed_from"] == "ACCEPT"
+
+
+def test_only_reviewers_see_earlier_decisions(client_as):
+    assert client_as(["analyst"]).get("/review/decided").status_code == 403
+    assert client_as(["viewer"]).get("/review/decided").status_code == 403

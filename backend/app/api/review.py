@@ -12,6 +12,7 @@ from app.core.rbac import Permission
 from app.models import Document, Fact, ReviewActionLog, User, ValidationIssue
 from app.models.enums import DocumentStatus, FactStatus, IssueStatus, ReviewAction, Severity
 from app.schemas.review import (
+    DecidedItem,
     FactOut,
     IssueOut,
     RelatedFactOut,
@@ -40,6 +41,80 @@ def _scoped_fact(db: Session, fact_id: uuid.UUID, user: User) -> tuple[Fact, Doc
     if row is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Fact not found")
     return row
+
+
+def _related_facts(db: Session, ids: set[uuid.UUID], user: User) -> dict[uuid.UUID, RelatedFactOut]:
+    """The other sources an issue points at (e.g. the conflicting figure), scoped."""
+    if not ids:
+        return {}
+    rows = db.execute(
+        scope_to_user(
+            select(Fact, Document.title)
+            .join(Document, Document.id == Fact.document_id)
+            .where(Fact.id.in_(ids)),
+            Document,
+            user,
+        )
+    ).all()
+    return {
+        f.id: RelatedFactOut(**FactOut.model_validate(f).model_dump(), document_title=t)
+        for f, t in rows
+    }
+
+
+@router.get("/decided", response_model=list[DecidedItem])
+def decided(
+    document_id: uuid.UUID | None = None,
+    limit: int = Query(100, ge=1, le=500),
+    user: User = Depends(require(Permission.REVIEW_FACTS)),
+    db: Session = Depends(get_db),
+) -> list[DecidedItem]:
+    """Facts a reviewer already decided, latest decision first, so a mistake can be
+    changed (the decision is posted again to /review/facts/{id})."""
+    stmt = (
+        select(ReviewActionLog, Fact, Document.title, User.name)
+        .join(Fact, Fact.id == ReviewActionLog.fact_id)
+        .join(Document, Document.id == Fact.document_id)
+        .join(User, User.id == ReviewActionLog.user_id)
+        .order_by(ReviewActionLog.created_at.desc())
+    )
+    if document_id:
+        stmt = stmt.where(Fact.document_id == document_id)
+    latest: dict[uuid.UUID, tuple] = {}
+    counts: dict[uuid.UUID, int] = {}
+    for action, fact, title, name in db.execute(scope_to_user(stmt, Document, user)).all():
+        counts[fact.id] = counts.get(fact.id, 0) + 1
+        latest.setdefault(fact.id, (action, fact, title, name))
+    chosen = list(latest.values())[:limit]
+
+    issues: dict[uuid.UUID, list[ValidationIssue]] = {}
+    for issue in db.scalars(
+        select(ValidationIssue).where(ValidationIssue.fact_id.in_([f.id for _, f, _, _ in chosen]))
+    ):
+        issues.setdefault(issue.fact_id, []).append(issue)
+    related = _related_facts(
+        db,
+        {i.related_fact_id for lst in issues.values() for i in lst if i.related_fact_id},
+        user,
+    )
+    return [
+        DecidedItem(
+            fact=FactOut.model_validate(fact),
+            document_title=title,
+            issues=[IssueOut.model_validate(i) for i in issues.get(fact.id, [])],
+            related=[
+                related[i.related_fact_id]
+                for i in issues.get(fact.id, [])
+                if i.related_fact_id in related
+            ],
+            action=action.action.value,
+            comment=action.comment,
+            decided_by=name,
+            decided_at=action.created_at,
+            decisions=counts[fact.id],
+        )
+        for action, fact, title, name in chosen
+    ]
 
 
 @router.get("/issues", response_model=list[ReviewItem])
@@ -74,20 +149,7 @@ def review_queue(
         if issue.related_fact_id:
             related_ids.add(issue.related_fact_id)
 
-    related: dict[uuid.UUID, RelatedFactOut] = {}
-    if related_ids:
-        for f, t in db.execute(
-            scope_to_user(
-                select(Fact, Document.title)
-                .join(Document, Document.id == Fact.document_id)
-                .where(Fact.id.in_(related_ids)),
-                Document,
-                user,
-            )
-        ).all():
-            related[f.id] = RelatedFactOut(
-                **FactOut.model_validate(f).model_dump(), document_title=t
-            )
+    related = _related_facts(db, related_ids, user)
 
     out = []
     for item in items.values():
@@ -117,6 +179,18 @@ def decide(
     db: Session = Depends(get_db),
 ) -> Fact:
     fact, doc = _scoped_fact(db, fact_id, user)
+    # A fact already decided can be decided again (to fix a mistake), but only with a reason
+    earlier = db.scalar(
+        select(ReviewActionLog.action)
+        .where(ReviewActionLog.fact_id == fact.id)
+        .order_by(ReviewActionLog.created_at.desc())
+        .limit(1)
+    )
+    if earlier and not (body.comment and body.comment.strip()):
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "A comment is required to change an earlier decision",
+        )
     old = f"{fact.value}"
     new = None
     if body.action == "EDIT":
@@ -150,7 +224,8 @@ def decide(
     )
     audit.record(
         db, f"review_{body.action.lower()}", actor=user, entity="fact", entity_id=fact.id,
-        details={"old": old, "new": new, "comment": body.comment, "label": fact.label},
+        details={"old": old, "new": new, "comment": body.comment, "label": fact.label,
+                 "changed_from": earlier.value if earlier else None},
         request=request,
     )  # fmt: skip
     db.flush()
