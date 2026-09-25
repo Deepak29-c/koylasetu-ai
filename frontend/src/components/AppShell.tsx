@@ -13,6 +13,8 @@ import {
   LogOut,
   Menu,
   MessageSquareText,
+  PanelLeftClose,
+  PanelLeftOpen,
   ScrollText,
   ShieldCheck,
   Upload,
@@ -22,7 +24,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import Alert from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
@@ -104,9 +106,6 @@ function activeHref(pathname: string): string | null {
   const matches = ALL_HREFS.filter((h) => h !== "/" && (pathname === h || pathname.startsWith(`${h}/`)));
   return matches.sort((a, b) => b.length - a.length)[0] ?? null;
 }
-
-/** How long the pointer may leave the rail before it shrinks back (avoids flicker at the edge). */
-const COLLAPSE_DELAY_MS = 180;
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -224,50 +223,82 @@ function MobileMenu({ onClose, children }: { onClose: () => void; children: Reac
   );
 }
 
+// Open / closed choice for the desktop menu, remembered per browser. Kept in memory too, so the
+// button still works when storage is blocked (private windows).
+const MENU_OPEN_KEY = "koylasetu.menuOpen";
+const menuListeners = new Set<() => void>();
+let menuOpenInMemory = true;
+
+function readMenuOpen(): boolean {
+  try {
+    const saved = window.localStorage.getItem(MENU_OPEN_KEY);
+    return saved === null ? menuOpenInMemory : saved !== "false";
+  } catch {
+    return menuOpenInMemory;
+  }
+}
+
+function writeMenuOpen(open: boolean) {
+  menuOpenInMemory = open;
+  try {
+    window.localStorage.setItem(MENU_OPEN_KEY, String(open));
+  } catch {
+    // storage blocked: the in-memory value is used
+  }
+  menuListeners.forEach((notify) => notify());
+}
+
+function subscribeMenuOpen(notify: () => void) {
+  menuListeners.add(notify);
+  window.addEventListener("storage", notify); // another tab changed it
+  return () => {
+    menuListeners.delete(notify);
+    window.removeEventListener("storage", notify);
+  };
+}
+
 /**
- * The desktop menu is a slim icon rail that opens while the pointer or keyboard focus is
- * inside it and closes again when both leave. It opens over the page, so the content never
- * shifts; the placeholder keeps the rail's width in the layout.
+ * The desktop menu opens and closes only when the user asks, with the button at its top.
+ * Open, it takes its own space and the page moves over; closed, it is a slim icon rail whose
+ * icons show their names as tooltips. It never covers the page. The choice is remembered.
  */
 function DesktopRail({ me, current, onSignOut }: { me: Me | null; current: string | null; onSignOut: () => void }) {
-  const [hovered, setHovered] = useState(false);
-  const [focused, setFocused] = useState(false);
-  const leaveTimer = useRef<number | null>(null);
-  const expanded = hovered || focused;
-
-  const cancelLeave = () => {
-    if (leaveTimer.current !== null) window.clearTimeout(leaveTimer.current);
-    leaveTimer.current = null;
-  };
-  useEffect(() => cancelLeave, []);
+  const { t } = useT();
+  // Server render assumes "open"; the browser then uses the saved choice.
+  const open = useSyncExternalStore(subscribeMenuOpen, readMenuOpen, () => true);
+  const toggle = () => writeMenuOpen(!open);
+  const label = open ? t("nav.closeMenu") : t("nav.openMenu");
+  const ToggleIcon = open ? PanelLeftClose : PanelLeftOpen;
 
   return (
-    <div className="relative hidden w-[72px] shrink-0 lg:block">
+    <div
+      className={cn(
+        "relative hidden shrink-0 transition-[width] duration-200 ease-out lg:block",
+        open ? "w-64" : "w-[72px]",
+      )}
+    >
       <aside
-        onMouseEnter={() => {
-          cancelLeave();
-          setHovered(true);
-        }}
-        onMouseLeave={() => {
-          cancelLeave();
-          leaveTimer.current = window.setTimeout(() => setHovered(false), COLLAPSE_DELAY_MS);
-        }}
-        onFocus={(e) => {
-          // Only keyboard focus keeps the rail open; a mouse click also focuses the link,
-          // and the rail should still close when the pointer leaves.
-          if ((e.target as HTMLElement).matches(":focus-visible")) setFocused(true);
-        }}
-        onBlur={(e) => {
-          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setFocused(false);
-        }}
+        aria-label={t("nav.main")}
         className={cn(
-          "fixed inset-y-0 left-0 z-40 flex flex-col overflow-hidden bg-sidebar text-white transition-[width,box-shadow] duration-200 ease-out",
-          expanded ? "w-64 shadow-float" : "w-[72px]",
+          "fixed inset-y-0 left-0 z-40 flex flex-col overflow-hidden bg-sidebar text-white transition-[width] duration-200 ease-out",
+          open ? "w-64" : "w-[72px]",
         )}
       >
-        <Brand collapsed={!expanded} />
-        <SideNav me={me} current={current} collapsed={!expanded} />
-        <AccountNav me={me} current={current} collapsed={!expanded} onSignOut={onSignOut} />
+        <div className={cn("flex shrink-0 items-center", open ? "justify-between pr-3" : "flex-col")}>
+          <Brand collapsed={!open} />
+          <button
+            type="button"
+            onClick={toggle}
+            aria-label={label}
+            aria-expanded={open}
+            title={label}
+            className="focus-on-dark rounded-full p-2 text-sidebar-text hover:bg-sidebar-hover hover:text-white"
+          >
+            <ToggleIcon size={18} aria-hidden />
+          </button>
+        </div>
+        <SideNav me={me} current={current} collapsed={!open} />
+        <AccountNav me={me} current={current} collapsed={!open} onSignOut={onSignOut} />
       </aside>
     </div>
   );
@@ -379,6 +410,7 @@ function RailLink({
     <Link
       href={href}
       aria-current={active ? "page" : undefined}
+      title={collapsed ? label : undefined}
       className={cn(
         railItem,
         sub && !collapsed && "h-9 pl-8 text-xs",
