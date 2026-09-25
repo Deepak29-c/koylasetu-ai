@@ -50,8 +50,31 @@ function Viewer() {
     router.replace(`/documents/${id}?${q}`);
   }
 
-  if (error) return <p className="rounded border border-red-300 bg-red-50 p-3 text-red-800">{error}</p>;
-  if (!data || data.page_no !== pageNo) return <p className="text-gray-500">{t("loading")}</p>;
+  // The way back is rendered even when the page itself fails to load. It used to sit
+  // only in the success branch, so any error left the reader with a red box and no
+  // route out - exactly the dead end #40 is about.
+  const backHref = search.get("from") ? `/ask?qa=${search.get("from")}` : "/ask";
+  const backLabel = search.get("from") ? t("qa.backToAnswer") : t("ask");
+  const backLink = (
+    <Link href={backHref} className="text-sm text-brand underline">
+      ← {backLabel}
+    </Link>
+  );
+
+  if (error)
+    return (
+      <div className="space-y-4">
+        <p className="rounded border border-red-300 bg-red-50 p-3 text-red-800">{error}</p>
+        {backLink}
+      </div>
+    );
+  if (!data || data.page_no !== pageNo)
+    return (
+      <div className="space-y-4">
+        <p className="text-gray-500">{t("loading")}</p>
+        {backLink}
+      </div>
+    );
 
   const total = data.page_count ?? pageNo;
   const highlight = box?.length === 4 ? box : data.chunks.find((c) => c.id === selected)?.bbox;
@@ -145,9 +168,7 @@ function Viewer() {
         </div>
       </div>
 
-      <Link href="/ask" className="text-sm text-brand underline">
-        ← {t("ask")}
-      </Link>
+      {backLink}
     </div>
   );
 }

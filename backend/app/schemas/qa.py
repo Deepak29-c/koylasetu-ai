@@ -1,7 +1,8 @@
 import uuid
+from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class AskIn(BaseModel):
@@ -30,6 +31,8 @@ class AskOut(BaseModel):
     """Answer format of guide 9.3."""
 
     qa_id: uuid.UUID
+    # Only set when a past answer is reopened, so the screen can show what was asked.
+    question: str | None = None
     answer: str
     route: str
     table: TableOut | None = None
@@ -44,3 +47,15 @@ class AskOut(BaseModel):
 class FeedbackIn(BaseModel):
     score: Literal[1, -1]
     comment: str | None = Field(default=None, max_length=2000)
+
+
+class QaHistoryOut(BaseModel):
+    """One line in "questions you asked recently" - enough to recognise and reopen it."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    question: str
+    route: str | None
+    grounded: bool | None
+    created_at: datetime

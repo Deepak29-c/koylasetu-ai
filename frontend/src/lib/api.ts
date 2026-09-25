@@ -54,6 +54,8 @@ export type Citation = {
 
 export type AskResult = {
   qa_id: string;
+  /** Only present when a past answer is reopened. */
+  question?: string | null;
   answer: string;
   route: string;
   table: { columns: string[]; rows: string[][] } | null;
@@ -605,6 +607,24 @@ export async function downloadFile(path: string, filename: string, retry = true)
 // for when Content-Disposition cannot be read.
 export function exportReport(id: string, format: "docx" | "pdf", prefix = "report"): Promise<void> {
   return downloadFile(`/reports/${id}/export?format=${format}`, `${prefix}-${id.slice(0, 8)}.${format}`);
+}
+
+export type QaHistoryRow = {
+  id: string;
+  question: string;
+  route: string | null;
+  grounded: boolean | null;
+  created_at: string;
+};
+
+/** Questions this person asked, newest first. Only ever their own. */
+export function listQaHistory(limit = 20): Promise<QaHistoryRow[]> {
+  return api<QaHistoryRow[]>(`/qa/history?limit=${limit}`);
+}
+
+/** A past answer, rebuilt from its log. Nothing is re-asked and no model runs. */
+export function getQaAnswer(id: string): Promise<AskResult> {
+  return api<AskResult>(`/qa/${id}`);
 }
 
 export function getDashboardSummary(): Promise<DashboardSummary> {
