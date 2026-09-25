@@ -1,12 +1,27 @@
 "use client";
 
-import Link from "next/link";
+import { ExternalLink, Info, ScanText } from "lucide-react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 
-import PageImage from "@/components/PageImage";
-import { api, type PageData } from "@/lib/api";
-import { errorText, useT } from "@/lib/i18n";
+import PageImage, { type PageZoom } from "@/components/PageImage";
+import Alert from "@/components/ui/Alert";
+import Badge from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { Card, CardHeader } from "@/components/ui/Card";
+import PageHeader from "@/components/ui/PageHeader";
+import RecordList, { type RecordItem } from "@/components/ui/RecordList";
+import { Skeleton } from "@/components/ui/Skeleton";
+import StatusBadge from "@/components/ui/StatusBadge";
+import ChunkList from "@/components/viewer/ChunkList";
+import PageNav from "@/components/viewer/PageNav";
+import PageTables from "@/components/viewer/PageTables";
+import ZoomControl from "@/components/viewer/ZoomControl";
+import { api, type DocumentRow, type PageData } from "@/lib/api";
+import { errorText } from "@/lib/errors";
+import { formatDateTime } from "@/lib/format";
+import { type LabelKey, useT } from "@/lib/i18n";
+import { safeInternalPath } from "@/lib/sources";
 
 export default function DocumentViewerPage() {
   return (
@@ -16,18 +31,40 @@ export default function DocumentViewerPage() {
   );
 }
 
+/**
+ * Where the back button goes. `from` is a path inside the app ("/ask?qa=…", "/reports/…");
+ * older links carry only a saved answer's id. Anything else (another site, "//host")
+ * falls back to the document list.
+ */
+/** Only http(s) links are shown; source_url is free text typed at upload. */
+function isWebLink(url: string): boolean {
+  return /^https?:\/\//i.test(url);
+}
+
+function backTarget(from: string | null): { href: string; label: LabelKey } {
+  const path = safeInternalPath(from);
+  if (path) return { href: path, label: path.startsWith("/ask") ? "qa.backToAnswer" : "ui.back" };
+  if (from && /^[0-9a-f-]{8,64}$/i.test(from)) return { href: `/ask?qa=${from}`, label: "qa.backToAnswer" };
+  return { href: "/documents", label: "documents" };
+}
+
 function Viewer() {
-  const { t } = useT();
+  const { t, locale } = useT();
   const router = useRouter();
   const { id } = useParams<{ id: string }>();
   const search = useSearchParams();
   const pageNo = Math.max(1, Number(search.get("page") ?? 1) || 1);
   const selected = search.get("chunk");
+  const from = search.get("from");
   // box=x0,y0,x1,y1: highlight a table cell (a figure's source) instead of a passage
   const box = search.get("box")?.split(",").map(Number).filter((n) => !Number.isNaN(n));
 
   const [data, setData] = useState<PageData | null>(null);
-  const [error, setError] = useState<unknown>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  // Document details need a permission not every reader has, so they are optional.
+  const [doc, setDoc] = useState<DocumentRow | null>(null);
+  const [zoom, setZoom] = useState<PageZoom>("fit");
 
   useEffect(() => {
     let cancelled = false;
@@ -37,138 +74,180 @@ function Viewer() {
         setData(d);
         setError(null);
       },
-      (e: unknown) => !cancelled && setError(e),
+      (e: unknown) => !cancelled && setError(errorText(e)),
     );
     return () => {
       cancelled = true;
     };
-  }, [id, pageNo]);
+  }, [id, pageNo, attempt]);
+
+  useEffect(() => {
+    let cancelled = false;
+    api<DocumentRow>(`/documents/${id}`).then(
+      (d) => !cancelled && setDoc(d),
+      () => {},
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
 
   function go(page: number, chunk?: string) {
     const q = new URLSearchParams({ page: String(page) });
     if (chunk) q.set("chunk", chunk);
+    // Keep the way back while moving around the document.
+    if (from) q.set("from", from);
     router.replace(`/documents/${id}?${q}`);
   }
 
-  // The way back is rendered even when the page itself fails to load. It used to sit
-  // only in the success branch, so any error left the reader with a red box and no
-  // route out - exactly the dead end #40 is about.
-  const backHref = search.get("from") ? `/ask?qa=${search.get("from")}` : "/ask";
-  const backLabel = search.get("from") ? t("qa.backToAnswer") : t("ask");
-  const backLink = (
-    <Link href={backHref} className="text-sm text-brand underline">
-      ← {backLabel}
-    </Link>
+  const back = backTarget(from);
+  const title = data?.document_title ?? doc?.title;
+  const total = data?.page_count ?? doc?.page_count ?? pageNo;
+  // A page change keeps the header and navigation in place while the new page loads.
+  const current = data && data.page_no === pageNo ? data : null;
+
+  const header = (
+    <PageHeader
+      className="mb-0"
+      title={title ?? <Skeleton className="h-7 w-72 max-w-full" />}
+      documentTitle={title ?? t("documents")}
+      breadcrumbs={[{ label: t("documents"), href: "/documents" }]}
+      back={{ href: back.href, label: t(back.label) }}
+      meta={doc && <StatusBadge kind="document" value={doc.status} />}
+      actions={
+        data?.source_url && isWebLink(data.source_url) && (
+          <a
+            href={data.source_url}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-brand hover:underline"
+          >
+            <ExternalLink size={16} aria-hidden />
+            {t("viewer.sourceLink")}
+          </a>
+        )
+      }
+    />
   );
 
-  if (error != null)
+  if (error)
     return (
-      <div className="space-y-4">
-        <p className="rounded border border-red-300 bg-red-50 p-3 text-red-800">{errorText(error, t)}</p>
-        {backLink}
-      </div>
-    );
-  if (!data || data.page_no !== pageNo)
-    return (
-      <div className="space-y-4">
-        <p className="text-gray-500">{t("loading")}</p>
-        {backLink}
+      <div className="space-y-6">
+        {header}
+        <Alert
+          tone="danger"
+          title={t("ui.somethingWrong")}
+          action={
+            <Button
+              variant="danger-outline"
+              size="sm"
+              onClick={() => {
+                setError(null);
+                setAttempt((n) => n + 1);
+              }}
+            >
+              {t("retry")}
+            </Button>
+          }
+        >
+          {error}
+        </Alert>
       </div>
     );
 
-  const total = data.page_count ?? pageNo;
-  const highlight = box?.length === 4 ? box : data.chunks.find((c) => c.id === selected)?.bbox;
+  const highlight = box?.length === 4 ? box : current?.chunks.find((c) => c.id === selected)?.bbox;
+
+  const details: RecordItem[] = [];
+  if (doc) {
+    details.push(
+      { label: t("type"), value: t(`doc.${doc.doc_type}` as LabelKey) },
+      { label: t("fyShort"), value: doc.fy },
+      { label: t("language"), value: t(`lang.${doc.language}` as LabelKey) || doc.language },
+      { label: t("pages"), value: doc.page_count },
+      { label: t("uploadedOn"), value: formatDateTime(doc.created_at, locale) },
+      { label: t("viewer.visibility"), value: doc.is_public ? t("viewer.public") : t("viewer.unitOnly") },
+      { label: t("viewer.fileName"), value: doc.original_filename, mono: true, wide: true },
+    );
+  }
+  if (current)
+    details.push({
+      label: t("viewer.textLayer"),
+      value: current.has_text_layer ? t("viewer.textLayerYes") : t("viewer.textLayerNo"),
+    });
+  if (data?.source_url && isWebLink(data.source_url))
+    details.push({
+      label: t("viewer.sourceLink"),
+      wide: true,
+      value: (
+        <a href={data.source_url} target="_blank" rel="noreferrer" className="text-brand hover:underline">
+          {data.source_url.replace(/^https?:\/\//, "")}
+        </a>
+      ),
+    });
+
+  const ocrPercent = current?.ocr_confidence != null ? Math.round(current.ocr_confidence * 100) : null;
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <h1 className="text-xl font-semibold">{data.document_title}</h1>
-        {data.source_url && (
-          <a href={data.source_url} target="_blank" rel="noreferrer" className="text-sm text-brand underline">
-            {data.source_url.replace(/^https?:\/\//, "").slice(0, 60)}
-          </a>
-        )}
-        <div className="ml-auto flex items-center gap-2 text-sm">
-          <button
-            disabled={pageNo <= 1}
-            onClick={() => go(pageNo - 1)}
-            className="rounded border bg-white px-3 py-1 disabled:opacity-40"
-          >
-            {t("prev")}
-          </button>
-          <span>
-            {t("page")} {pageNo} {t("of")} {total}
-          </span>
-          <button
-            disabled={pageNo >= total}
-            onClick={() => go(pageNo + 1)}
-            className="rounded border bg-white px-3 py-1 disabled:opacity-40"
-          >
-            {t("next")}
-          </button>
-        </div>
-      </div>
+    <div className="space-y-6">
+      {header}
 
-      {data.ocr_used && (
-        <p className="text-sm text-amber-800">
-          {t("ocrPage")} · {t("ocrConfidence")}{" "}
-          {data.ocr_confidence != null ? `${Math.round(data.ocr_confidence * 100)}%` : "—"}
-        </p>
-      )}
-
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-        <PageImage
-          imagePath={data.image_url}
-          width={data.width}
-          height={data.height}
-          highlight={highlight}
-          alt={`${t("page")} ${pageNo}`}
-        />
-
-        <div className="space-y-4">
-          <section>
-            <h2 className="mb-2 font-semibold">{t("pageText")}</h2>
-            <div className="max-h-[70vh] space-y-2 overflow-y-auto pr-1">
-              {data.chunks.map((c) => (
-                <button
-                  key={c.id}
-                  onClick={() => go(pageNo, c.id)}
-                  className={`block w-full rounded border p-2 text-left text-sm whitespace-pre-wrap ${
-                    c.id === selected ? "border-amber-500 bg-yellow-50" : "bg-white hover:border-brand"
-                  }`}
-                >
-                  {c.text}
-                </button>
-              ))}
+      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+        <Card aria-label={`${t("page")} ${pageNo}`} className="min-w-0 space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <PageNav page={pageNo} total={total} onGo={(p) => go(p)} />
+            <ZoomControl value={zoom} onChange={setZoom} />
+          </div>
+          {current?.ocr_used && (
+            <div className="flex flex-wrap items-center gap-2 text-sm text-muted">
+              <Badge
+                tone={ocrPercent !== null && ocrPercent >= 80 ? "info" : "warning"}
+                icon={<ScanText size={14} aria-hidden />}
+              >
+                {t("ocrPage")} · {t("ocrConfidence")} {ocrPercent !== null ? `${ocrPercent}%` : "–"}
+              </Badge>
+              <span>{t("viewer.ocrHelp")}</span>
             </div>
-          </section>
+          )}
+          {current ? (
+            <PageImage
+              imagePath={current.image_url}
+              width={current.width}
+              height={current.height}
+              highlight={highlight}
+              alt={`${title ?? ""}, ${t("page")} ${pageNo}`}
+              zoom={zoom}
+            />
+          ) : (
+            <div role="status" aria-label={t("loading")} className="aspect-[3/4] w-full">
+              <Skeleton className="h-full w-full rounded-panel" />
+            </div>
+          )}
+        </Card>
 
-          {data.tables.length > 0 && (
-            <section>
-              <h2 className="mb-2 font-semibold">{t("tablesOnPage")}</h2>
-              {data.tables.map((tb) => (
-                <div key={tb.id} className="mb-3 overflow-x-auto rounded border bg-white">
-                  <table className="text-xs">
-                    <tbody>
-                      {tb.rows_json.map((row, r) => (
-                        <tr key={r} className={r === 0 ? "bg-gray-50 font-medium" : "border-t"}>
-                          {row.map((cell, c) => (
-                            <td key={c} className="px-2 py-1 whitespace-nowrap">
-                              {cell}
-                            </td>
-                          ))}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ))}
-            </section>
+        <div className="min-w-0 space-y-6">
+          {current ? (
+            <ChunkList chunks={current.chunks} selected={selected} onSelect={(c) => go(pageNo, c)} />
+          ) : (
+            <Card>
+              <div role="status" aria-label={t("loading")} className="space-y-3">
+                <Skeleton className="h-5 w-40" />
+                {Array.from({ length: 4 }, (_, i) => (
+                  <Skeleton key={i} className="h-16 w-full rounded-panel" />
+                ))}
+              </div>
+            </Card>
+          )}
+
+          {details.length > 0 && (
+            <Card aria-labelledby="doc-details">
+              <CardHeader id="doc-details" icon={<Info />} title={t("viewer.details")} />
+              <RecordList items={details} columns={2} />
+            </Card>
           )}
         </div>
       </div>
 
-      {backLink}
+      {current && <PageTables tables={current.tables} />}
     </div>
   );
 }

@@ -212,12 +212,32 @@ export type UserUpdateIn = {
 export type ReportType = "pq_reply" | "monthly" | "briefing";
 export type ReportStatus = "DRAFT" | "IN_REVIEW" | "RETURNED" | "APPROVED" | "EXPORTED";
 
+/**
+ * What a report holds. `text` is the plain rendering every report has; generated PQ replies
+ * add header/blocks, monthly reports and briefing notes add title/sections. A save must send
+ * the whole object back: the server replaces content_json as it is given.
+ */
+export type ReportContent = {
+  text?: string;
+  kind?: string;
+  header?: Record<string, string>;
+  blocks?: PqBlock[];
+  title?: string;
+  subtitle?: string;
+  sections?: DraftSection[];
+  /** PqSource[] or DraftSource[] depending on the kind; read it through a helper that checks. */
+  sources?: unknown;
+  warnings?: string[];
+  remarks_by?: "model" | "rule";
+  [key: string]: unknown;
+};
+
 export type ReportRow = {
   id: string;
   report_type: ReportType;
   title: string;
   status: ReportStatus;
-  content_json: { text?: string };
+  content_json: ReportContent;
   org_unit_id: string;
   created_by: string;
   approver_id: string | null;
@@ -228,7 +248,7 @@ export type ReportRow = {
 
 export type ReportVersionRow = {
   version: number;
-  content_json: { text?: string };
+  content_json: ReportContent;
   editor: { id: string; name: string; email: string };
   // What happened, as a code the page words in the reader's language (#71), and the human
   // comment exactly as typed. change_note is the old stored sentence, kept for history.
@@ -449,7 +469,7 @@ export function listReports(filters: { status?: string; report_type?: string } =
 export function createReport(body: {
   report_type: ReportType;
   title: string;
-  content_json?: { text?: string };
+  content_json?: ReportContent;
   due_date?: string | null;
 }): Promise<ReportRow> {
   return api<ReportRow>("/reports", {
@@ -469,7 +489,7 @@ export function listReportVersions(id: string): Promise<ReportVersionRow[]> {
 
 export function updateReport(
   id: string,
-  body: { title?: string; content_json?: { text?: string }; due_date?: string | null; change_note?: string },
+  body: { title?: string; content_json?: ReportContent; due_date?: string | null; change_note?: string },
 ): Promise<ReportRow> {
   return api<ReportRow>(`/reports/${id}`, {
     method: "PATCH",
@@ -727,4 +747,47 @@ export function uploadDocuments(
     };
     xhr.send(form);
   });
+}
+
+// --- Metrics screen (guide 12 / 15.2) ---
+
+export type MetricsOut = {
+  qa: {
+    questions_total: number;
+    questions_this_month: number;
+    grounded: number;
+    grounded_pct: number | null;
+    avg_latency_ms: number | null;
+    helpful: number;
+    not_helpful: number;
+    helpful_pct: number | null;
+  };
+  facts: {
+    total: number;
+    auto_verified: number;
+    reviewed_verified: number;
+    flagged: number;
+    rejected: number;
+    automation_pct: number | null;
+  };
+  reports: { total: number; drafts: number; in_review: number; approved: number };
+  /** Latest eval/run_eval.py run; null until the benchmark has been run on this machine. */
+  benchmark: {
+    run_date: string;
+    questions_asked: number;
+    answered: number;
+    not_found: number;
+    errors: number;
+    numeric_accuracy_pct: number | null;
+    all_correct_pct: number | null;
+    grounded_pct: number | null;
+    median_latency_ms: number | null;
+    time_saved_pct: number | null;
+    citation_correct_pct: number | null;
+    automation_pct: number | null;
+  } | null;
+};
+
+export function getMetrics(): Promise<MetricsOut> {
+  return api<MetricsOut>("/metrics");
 }
