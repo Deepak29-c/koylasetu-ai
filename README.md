@@ -16,7 +16,7 @@ The full technical spec is [docs/KoylaSetu_AI_Developer_Guide.docx](docs/KoylaSe
 | `backend/app` | FastAPI: `core/` (config, JWT, RBAC), `models/`, `schemas/`, `api/`, `services/`, `llm/` |
 | `backend/worker` | RQ jobs: ingest, extract, validate, embed, topics |
 | `backend/alembic` | DB migrations |
-| `frontend/` | Next.js (app router) + Tailwind |
+| `frontend/` | Next.js (app router) + Tailwind v4: design tokens in `src/app/globals.css`, shared components in `src/components/ui/`, self-hosted fonts in `src/fonts/` |
 | `eval/` | Benchmark set + runner |
 | `data/` | Downloaded public documents (git-ignored, except `sources.csv`) |
 
@@ -239,8 +239,19 @@ numbers need the local models pulled and the source documents loaded.
 - Local model server (Ollama) without Docker: install notes per OS and `scripts/check_llm.py`,
   which checks the local-only guard, both models, a 1024-number embedding and a test answer
 
-Not built yet: LLM Text-to-SQL for questions the rules can't parse, and the Metrics screen
-that shows the benchmark results. Tables on scanned pages are not detected yet (OCR gives text only).
+**Interface** (guide 13):
+- One design system: colour, radius and shadow tokens in `globals.css`, shared components in
+  `src/components/ui/` (buttons, fields, tables, badges, dialogs, drawer, toasts, skeletons,
+  empty states, progress for long jobs) and one citation chip used on every screen
+- Side menu grouped by task and filtered by role; it opens on hover or keyboard focus
+- Montserrat and Noto Sans Devanagari are bundled, so Hindi renders the same on every machine
+  with no internet access
+- Report editor edits each answer block or section in place and keeps its sources, tables and
+  warnings; typed figures that are not in the source text are marked as unlinked
+- Approval inbox (`/approvals`) and Metrics screen (`/metrics`, `GET /metrics`): benchmark
+  accuracy, time saved, automation and grounded %, next to live usage from the database
+
+Not built yet: LLM Text-to-SQL for questions the rules can't parse. Tables on scanned pages are not detected yet (OCR gives text only).
 PaddleOCR (`OCR_ENGINE=paddle`) currently falls back to Tesseract.
 
 ## Run with Docker (the normal way)

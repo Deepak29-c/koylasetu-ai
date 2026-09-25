@@ -53,6 +53,8 @@ services:
       - "8000:8000"
     volumes:
       - files:/data/files
+      # Benchmark runs from eval/run_eval.py, read by the Metrics screen.
+      - ./eval/results:/eval/results:ro
     depends_on:
       db:
         condition: service_healthy

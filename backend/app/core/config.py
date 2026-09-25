@@ -27,6 +27,8 @@ class Settings(BaseSettings):
     # Run background jobs inside the API process instead of RQ (no Redis, e.g. Windows without
     # Docker). Jobs run one at a time on one thread.
     ingest_inline: bool = False
+    # Where eval/run_eval.py writes its runs; the Metrics screen shows the latest summary.json.
+    eval_results_dir: str = "../eval/results"
 
     jwt_secret: str = "change-me"
     jwt_algorithm: str = "HS256"

@@ -1,24 +1,310 @@
 @import "tailwindcss";
 
-/* Simple, formal government look (guide section 13). System fonts only: the build
-   must work offline, so no web-font downloads. */
+/*
+ * Design tokens. Every colour, radius and shadow used by the app is defined here and
+ * reached through a Tailwind utility (bg-surface, text-muted, rounded-card, shadow-card…).
+ * Components never hard-code hex values; add a token first.
+ *
+ * Fonts are self-hosted (src/fonts, loaded in app/layout.tsx) because the build must run
+ * offline. Montserrat has no Devanagari glyphs, so Hindi falls through to Noto Sans
+ * Devanagari in the same stack.
+ */
 :root {
-  --background: #f6f7f9;
-  --foreground: #1b1f24;
+  /* Brand: navy carries every interactive meaning; saffron is the "go" accent. */
   --brand: #0b2e59;
+  --brand-hover: #082448;
+  --brand-strong: #061a35;
   --brand-soft: #e7eef8;
+  --brand-tint: #f3f7fc;
+  --brand-ring: rgb(11 46 89 / 0.38);
+  --accent: #f2b233;
+  --accent-soft: #fdf3dc;
+  --accent-ink: #5c3d00;
+
+  /* Surfaces */
+  --background: #f4f6f9;
+  --surface: #ffffff;
+  --surface-subtle: #f7f8fb;
+  --surface-sunken: #eef1f5;
+  --surface-hover: #f3f6fb;
+
+  /* Borders */
+  --border: #e2e6ed;
+  --border-strong: #cdd4df;
+
+  /* Text ramp (all ≥ 4.5:1 on white except --text-disabled) */
+  --foreground: #1b2330;
+  --text-strong: #0f1722;
+  --text-muted: #525d6e;
+  --text-subtle: #5f6a7b;
+  --text-disabled: #97a0af;
+
+  /* Status tones: background / foreground / border. Foregrounds pass AA on their bg. */
+  --success-bg: #e8f6ee;
+  --success-fg: #146a3d;
+  --success-border: #b7e0c8;
+  --success-solid: #17804a;
+  --warning-bg: #fff4de;
+  --warning-fg: #7f4d00;
+  --warning-border: #f3d59a;
+  --danger-bg: #fdeeee;
+  --danger-fg: #a8231b;
+  --danger-border: #f3c3c0;
+  --danger-solid: #b42318;
+  --info-bg: #eaf1fb;
+  --info-fg: #1c4b8c;
+  --info-border: #c3d6f1;
+  --neutral-bg: #f0f2f6;
+  --neutral-fg: #465163;
+  --neutral-border: #d9dee6;
+
+  /* Shell */
+  --sidebar: #0b2e59;
+  --sidebar-hover: rgb(255 255 255 / 0.1);
+  --sidebar-active: rgb(255 255 255 / 0.16);
+  --sidebar-text: rgb(255 255 255 / 0.78);
+
+  /* Overlays */
+  --scrim: rgb(10 18 32 / 0.42);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+
   --color-brand: var(--brand);
+  --color-brand-hover: var(--brand-hover);
+  --color-brand-strong: var(--brand-strong);
   --color-brand-soft: var(--brand-soft);
-  --font-sans: "Segoe UI", "Noto Sans", "Noto Sans Devanagari", "Nirmala UI", Arial, sans-serif;
+  --color-brand-tint: var(--brand-tint);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-ink: var(--accent-ink);
+
+  --color-surface: var(--surface);
+  --color-surface-subtle: var(--surface-subtle);
+  --color-surface-sunken: var(--surface-sunken);
+  --color-surface-hover: var(--surface-hover);
+
+  --color-line: var(--border);
+  --color-line-strong: var(--border-strong);
+
+  --color-strong: var(--text-strong);
+  --color-muted: var(--text-muted);
+  --color-subtle: var(--text-subtle);
+  --color-disabled: var(--text-disabled);
+
+  --color-success-bg: var(--success-bg);
+  --color-success-fg: var(--success-fg);
+  --color-success-border: var(--success-border);
+  --color-success: var(--success-solid);
+  --color-warning-bg: var(--warning-bg);
+  --color-warning-fg: var(--warning-fg);
+  --color-warning-border: var(--warning-border);
+  --color-danger-bg: var(--danger-bg);
+  --color-danger-fg: var(--danger-fg);
+  --color-danger-border: var(--danger-border);
+  --color-danger: var(--danger-solid);
+  --color-info-bg: var(--info-bg);
+  --color-info-fg: var(--info-fg);
+  --color-info-border: var(--info-border);
+  --color-neutral-bg: var(--neutral-bg);
+  --color-neutral-fg: var(--neutral-fg);
+  --color-neutral-border: var(--neutral-border);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-hover: var(--sidebar-hover);
+  --color-sidebar-active: var(--sidebar-active);
+  --color-sidebar-text: var(--sidebar-text);
+  --color-scrim: var(--scrim);
+
+  --font-sans:
+    var(--font-montserrat), var(--font-devanagari), "Segoe UI", "Noto Sans", "Nirmala UI", Arial,
+    sans-serif;
+  --font-mono: ui-monospace, "Cascadia Mono", "Consolas", "Liberation Mono", monospace;
+
+  --radius-control: 8px;
+  --radius-card: 16px;
+  --radius-panel: 12px;
+
+  --shadow-card: 0 1px 2px rgb(15 23 42 / 0.04), 0 2px 8px rgb(15 23 42 / 0.04);
+  --shadow-pill: 0 1px 2px rgb(15 23 42 / 0.12);
+  --shadow-pop: 0 12px 28px rgb(21 31 54 / 0.14);
+  --shadow-float: 0 24px 60px rgb(21 31 54 / 0.24);
+
+  --animate-panel-in: panel-in 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  --animate-drawer-in: drawer-in 260ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  --animate-toast-in: toast-in 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  --animate-shimmer: shimmer 1.4s linear infinite;
+
+  @keyframes panel-in {
+    from {
+      opacity: 0;
+      transform: translateY(6px) scale(0.995);
+    }
+  }
+  @keyframes drawer-in {
+    from {
+      opacity: 0;
+      transform: translateX(28px);
+    }
+  }
+  @keyframes toast-in {
+    from {
+      opacity: 0;
+      transform: translateY(-12px);
+    }
+  }
+  @keyframes shimmer {
+    from {
+      background-position: 200% 0;
+    }
+    to {
+      background-position: -200% 0;
+    }
+  }
+}
+
+@layer base {
+  /* Tailwind v4 defaults borders to currentColor; a bare `border` should be a hairline. */
+  *,
+  ::before,
+  ::after,
+  ::backdrop {
+    border-color: var(--border);
+  }
+
+  /*
+   * Cursors. Tailwind v4 no longer gives buttons a pointer, and plain text shows the text
+   * I-beam, so labels, tiles and badges looked editable. The page uses the arrow; only
+   * things you can click get the hand, and only fields you can type in get the I-beam.
+   */
+  body {
+    cursor: default;
+  }
+  a[href],
+  button,
+  summary,
+  select,
+  [role="button"],
+  [role="tab"],
+  [role="menuitem"],
+  [role="option"],
+  [role="checkbox"],
+  input[type="checkbox"],
+  input[type="radio"],
+  input[type="file"],
+  input[type="range"],
+  input[type="submit"],
+  input[type="button"],
+  input[type="checkbox"] + label,
+  input[type="radio"] + label {
+    cursor: pointer;
+  }
+  input:not([type="checkbox"], [type="radio"], [type="file"], [type="range"], [type="submit"], [type="button"]),
+  textarea,
+  [contenteditable]:not([contenteditable="false"]) {
+    cursor: text;
+  }
+  :disabled,
+  input:disabled,
+  textarea:disabled,
+  select:disabled,
+  a[aria-disabled="true"],
+  [aria-disabled="true"],
+  :disabled + label {
+    cursor: not-allowed;
+  }
+
+  /* One visible focus style for every control. In the base layer, so a component's own
+     focus utilities (a field's ring, outline-none on <main>) still win. */
+  :focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
+  }
+  .focus-on-dark:focus-visible {
+    outline-color: var(--accent);
+  }
+
+  /*
+   * Pages fill the screen down to the footer: the page's last block grows, a card or table
+   * frame stacks its content, and an empty state (or a table's rows) takes the spare height.
+   * Utilities on an element (grid, block…) still win over these base rules.
+   */
+  #main > :last-child {
+    flex-grow: 1;
+  }
+  #main > :only-child {
+    display: flex;
+    flex-direction: column;
+  }
+  #main > :only-child > :last-child {
+    flex-grow: 1;
+  }
+  .ks-card {
+    display: flex;
+    flex-direction: column;
+  }
+  .ks-card > .ks-grow,
+  .ks-card > .ks-empty,
+  .ks-card > :has(> .ks-empty) {
+    flex-grow: 1;
+  }
+  .ks-card > :has(> .ks-empty) {
+    display: flex;
+    flex-direction: column;
+  }
+  .ks-card > :has(> .ks-empty) > .ks-empty {
+    flex-grow: 1;
+  }
+
+  /* A blinking caret only ever belongs in a field you can type in. */
+  * {
+    caret-color: transparent;
+  }
+  input,
+  textarea,
+  [contenteditable]:not([contenteditable="false"]) {
+    caret-color: auto;
+  }
+
+  /* Double-clicking a control should not select its text. */
+  button,
+  [role="button"],
+  [role="tab"],
+  summary {
+    user-select: none;
+  }
+}
+
+html {
+  font-size: 100%;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+/* Hindi needs more room above and below the headline stroke. */
+:lang(hi) body {
+  line-height: 1.65;
+}
+
+
+::selection {
+  background: var(--brand-soft);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
