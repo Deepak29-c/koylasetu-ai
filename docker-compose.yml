@@ -1,0 +1,91 @@
+# KoylaSetu AI – full stack. Start everything with: docker compose up
+# First time only, pull the models:
+#   docker exec ollama ollama pull qwen2.5:7b-instruct
+#   docker exec ollama ollama pull bge-m3
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: koyla-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-koyla}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-koyla}
+      POSTGRES_DB: ${POSTGRES_DB:-koyla}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-koyla} -d ${POSTGRES_DB:-koyla}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7
+    container_name: koyla-redis
+    ports:
+      - "6379:6379"
+
+  ollama:
+    image: ollama/ollama
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama:/root/.ollama
+    # Uncomment on a machine with an NVIDIA GPU + NVIDIA Container Toolkit.
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+  api:
+    build: ./backend
+    image: koylasetu-backend
+    container_name: koyla-api
+    env_file: .env
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    ports:
+      - "8000:8000"
+    volumes:
+      - files:/data/files
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  worker:
+    # Same image as the api (built once by the api service), different command.
+    image: koylasetu-backend
+    pull_policy: never
+    container_name: koyla-worker
+    env_file: .env
+    command: rq worker --url ${REDIS_URL:-redis://redis:6379/0} ingest topics reports
+    volumes:
+      - files:/data/files
+    # Not depending on ollama: the worker only calls it for LLM steps, and during
+    # early development you can run without it (docker compose up db redis api worker web).
+    depends_on:
+      - api
+      - redis
+
+  web:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    container_name: koyla-web
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+
+volumes:
+  pgdata:
+  ollama:
+  files:

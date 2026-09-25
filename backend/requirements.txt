@@ -1,0 +1,27 @@
+# API + worker core
+fastapi>=0.115
+uvicorn[standard]>=0.30
+pydantic>=2.8
+pydantic-settings>=2.4
+email-validator>=2.2
+python-multipart>=0.0.9
+sqlalchemy>=2.0.32
+alembic>=1.13
+psycopg[binary]>=3.2
+pgvector>=0.3
+pyjwt>=2.9
+argon2-cffi>=23.1
+redis>=5.0
+rq>=1.16
+httpx>=0.27
+
+# Added when their module is built (kept out for now so the image stays small):
+#   W1 ingestion: pymupdf, paddleocr, pytesseract, opencv-python-headless, docling, pdfplumber, pandas, openpyxl
+#   W3 Q&A: sqlglot
+#   W4 reports: docxtpl, matplotlib
+#   Topics: bertopic, keybert, wordcloud
+
+# Dev / test
+pytest>=8.3
+ruff>=0.6
+black>=24.8
