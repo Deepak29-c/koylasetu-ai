@@ -23,6 +23,20 @@ The full technical spec is [docs/KoylaSetu_AI_Developer_Guide.docx](docs/KoylaSe
 
 Built so far:
 
+**Step 3b: NUMERIC route** (guide 9.1), numbers answered from the facts database:
+- Router (rules, no model call): NUMERIC / TEXTUAL / MIXED, and filters: metric, company /
+  state, category, coking, period (month, "upto" = year to date, FY, "as on" date),
+  subsidiary-wise / state-wise breakdown
+- Parameterised facts query (the model never writes SQL) in a READ ONLY transaction with a 5 s
+  timeout, scoped to the user's units; REJECTED facts never used, VERIFIED preferred,
+  unverified ones labelled. A period that isn't in the database returns nothing rather than a
+  different period
+- The model writes the sentence from DATA rows [F1]…; broken wording falls back to a plain
+  sentence built from the rows; more than 6 rows become a table; works without the model
+- No matching facts: falls back to the text route and says so in the answer
+- Ask screen: figures table under the answer; each figure links to its page with the exact
+  cell highlighted
+
 **Step 3a: facts, validation, review queue** (guide 7.2-7.4, 8, W2):
 - Tables → facts by keyword rules; numbers are copied from the cell by code, with the cell's
   bbox, so each figure can be highlighted on its page. Glued two-row headers are split,
@@ -59,10 +73,8 @@ On the two documents processed so far (Monthly Coal Statistics Dec 2024, Coal In
   open cited pages even though they can't browse the document list
 - Guard: the model server must be local unless `ALLOW_EXTERNAL_CALLS=true`
 
-Measured on the demo PC (CPU only, `qwen2.5:3b-instruct`): about 30-55 s per answer.
-Questions that need a figure from a table cell (e.g. "NCL production vs target") are not
-reliable on the text route with the 3B model; they go to the NUMERIC route (SQL on verified
-facts), built in step 3.
+Measured on the demo PC (CPU only, `qwen2.5:3b-instruct`): about 30-55 s for a text answer,
+1-8 s for a figures answer (NUMERIC route).
 
 **W1 ingestion pipeline** (guide 7.1 steps 1-9), runs in the worker:
 - PDF pages with a text layer: text blocks with position (bbox) + ruled tables, cells copied as text
@@ -86,7 +98,7 @@ facts), built in step 3.
 - Frontend: login, home, upload (drag and drop, progress bar) and documents pages, with an English/Hindi toggle
 - Seed script with demo users for all 6 roles
 
-Not built yet: NUMERIC route (step 3b), reports,
+Not built yet: LLM Text-to-SQL for questions the rules can't parse, reports,
 topics, and the benchmark. PaddleOCR (`OCR_ENGINE=paddle`) currently falls back to Tesseract.
 
 ## Run with Docker (the normal way)

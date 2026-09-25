@@ -10,6 +10,7 @@ from app.llm.client import LlmUnavailable
 from app.models import QaLog, User
 from app.schemas.qa import AskIn, AskOut, CitationOut, FeedbackIn
 from app.services import qa
+from app.services.facts_query import FactRow
 
 router = APIRouter(prefix="/qa", tags=["qa"])
 
@@ -31,24 +32,29 @@ def ask(
         qa_id=result.qa_id,
         answer=result.answer,
         route=result.route,
-        citations=[
-            CitationOut(
-                id=p.ref,
-                chunk_id=p.chunk_id,
-                document_id=p.document_id,
-                document=p.document_title,
-                page=p.page_no,
-                bbox=p.bbox,
-                text=p.text,
-            )
-            for p in result.citations
-        ],
+        table=result.table,
+        citations=[_citation(c) for c in result.citations],
         grounded=result.grounded,
         unmatched_numbers=result.unmatched_numbers,
         confidence=result.confidence,
         not_found=result.not_found,
         latency_ms=result.latency_ms,
     )
+
+
+def _citation(c: qa.Source) -> CitationOut:
+    common = {
+        "id": c.ref,
+        "document_id": c.document_id,
+        "document": c.document_title,
+        "page": c.page_no,
+        "bbox": c.bbox,
+    }
+    if isinstance(c, FactRow):
+        return CitationOut(
+            **common, kind="fact", fact_id=c.fact_id, status=c.status, text=qa.fact_line(c)
+        )
+    return CitationOut(**common, kind="passage", chunk_id=c.chunk_id, text=c.text)
 
 
 @router.post("/{qa_id}/feedback", status_code=status.HTTP_204_NO_CONTENT)

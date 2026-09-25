@@ -13,7 +13,10 @@ const CONF_STYLE: Record<AskResult["confidence"], string> = {
 };
 
 function sourceHref(c: Citation) {
-  return `/documents/${c.document_id}?page=${c.page}&chunk=${c.chunk_id}`;
+  const q = new URLSearchParams({ page: String(c.page) });
+  if (c.kind === "fact" && c.bbox) q.set("box", c.bbox.join(","));  // highlight the table cell
+  else if (c.chunk_id) q.set("chunk", c.chunk_id);
+  return `/documents/${c.document_id}?${q}`;
 }
 
 function escapeRegex(s: string) {
@@ -22,17 +25,18 @@ function escapeRegex(s: string) {
 
 /** Answer text with [C1] markers as source chips and unsupported numbers in red. */
 function AnswerText({ result }: { result: AskResult }) {
+  const { t } = useT();
   const byId = new Map(result.citations.map((c) => [c.id, c]));
   const unmatched = result.unmatched_numbers.filter(Boolean);
   const redRe = unmatched.length
     ? new RegExp(`(?<![\\d.,])(${unmatched.map(escapeRegex).join("|")})(?![\\d])`, "g")
     : null;
 
-  const parts = result.answer.split(/(\[\s*C\d+\s*\])/g);
+  const parts = result.answer.split(/(\[\s*[CF]\d+\s*\])/g);
   return (
     <p className="leading-7 whitespace-pre-wrap">
       {parts.map((part, i) => {
-        const ref = part.match(/^\[\s*(C\d+)\s*\]$/)?.[1];
+        const ref = part.match(/^\[\s*([CF]\d+)\s*\]$/)?.[1];
         if (ref) {
           const c = byId.get(ref);
           return c ? (
@@ -42,7 +46,9 @@ function AnswerText({ result }: { result: AskResult }) {
               title={c.text.slice(0, 200)}
               className="mx-0.5 inline-block rounded bg-brand-soft px-1.5 text-xs font-medium text-brand hover:underline"
             >
+              {c.kind === "fact" ? `${c.id} · ` : ""}
               {c.document.slice(0, 28)}, p.{c.page}
+              {c.status && c.status !== "VERIFIED" ? ` · ${t("unverified")}` : ""}
             </Link>
           ) : null;
         }
@@ -144,6 +150,7 @@ export default function AskPage() {
               {t(`conf.${result.confidence}` as LabelKey)}
             </div>
             <AnswerText result={result} />
+            {result.table && <FiguresTable result={result} />}
             {result.unmatched_numbers.length > 0 && (
               <p className="text-sm text-red-800">
                 {t("unmatched")}: {result.unmatched_numbers.join(", ")}
@@ -196,4 +203,50 @@ function fetchFeedback(qaId: string, score: 1 | -1) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ score }),
   });
+}
+
+/** Figures behind a NUMERIC answer, each row linked to the cell it was read from. */
+function FiguresTable({ result }: { result: AskResult }) {
+  const { t } = useT();
+  const byId = new Map(result.citations.map((c) => [c.id, c]));
+  const table = result.table!;
+  return (
+    <div className="overflow-x-auto rounded border">
+      <table className="w-full text-left text-sm">
+        <thead className="bg-gray-50 text-gray-600">
+          <tr>
+            {table.columns.map((c) => (
+              <th key={c} className="px-3 py-1.5 font-medium">
+                {c}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {table.rows.map((row, i) => {
+            const ref = row[row.length - 1];
+            const c = byId.get(ref);
+            return (
+              <tr key={i} className="border-t">
+                {row.slice(0, -1).map((cell, j) => (
+                  <td key={j} className={`px-3 py-1.5 ${j === 3 ? "font-semibold" : ""}`}>
+                    {j === 4 && cell !== "Verified" ? <span className="text-amber-800">{t("unverified")}</span> : cell}
+                  </td>
+                ))}
+                <td className="px-3 py-1.5">
+                  {c ? (
+                    <Link href={sourceHref(c)} className="text-brand underline">
+                      {c.document.slice(0, 24)}, p.{c.page}
+                    </Link>
+                  ) : (
+                    ref
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
 }

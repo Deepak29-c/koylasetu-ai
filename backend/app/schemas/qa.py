@@ -9,22 +9,30 @@ class AskIn(BaseModel):
 
 
 class CitationOut(BaseModel):
-    id: str  # "C1": the id used inside the answer text
-    chunk_id: uuid.UUID
+    id: str  # "C1" (passage) or "F1" (figure): the id used inside the answer text
+    kind: Literal["passage", "fact"]
     document_id: uuid.UUID
     document: str
     page: int
     bbox: list[float] | None
-    text: str
+    text: str  # passage text, or the figure line for a fact
+    chunk_id: uuid.UUID | None = None
+    fact_id: uuid.UUID | None = None
+    status: str | None = None  # facts: VERIFIED or FLAGGED (shown as unverified)
+
+
+class TableOut(BaseModel):
+    columns: list[str]
+    rows: list[list[str]]
 
 
 class AskOut(BaseModel):
-    """Answer format of guide 9.3 (table is filled by the NUMERIC route, from step 3)."""
+    """Answer format of guide 9.3."""
 
     qa_id: uuid.UUID
     answer: str
     route: str
-    table: dict | None = None
+    table: TableOut | None = None
     citations: list[CitationOut]
     grounded: bool
     unmatched_numbers: list[str]  # as written in the answer, for red highlighting
