@@ -32,8 +32,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   const nav = [
     { href: "/", label: t("home") },
+    { href: "/ask", label: t("ask") },
     { href: "/upload", label: t("upload") },
     { href: "/documents", label: t("documents") },
+    ...(me?.permissions.includes("view_audit") ? [{ href: "/audit", label: t("auditLog") }] : []),
   ];
 
   return (
@@ -64,9 +66,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               {lang === "en" ? "हिंदी" : "English"}
             </button>
             {me && (
-              <span className="opacity-90">
+              <Link href="/profile" className="opacity-90 hover:underline">
                 {me.name} · {me.org_unit.code}
-              </span>
+              </Link>
             )}
             <button
               onClick={() => {

@@ -39,6 +39,76 @@ export type UploadResult = {
   error: string | null;
 };
 
+export type Citation = {
+  id: string; // "C1": the marker used inside the answer text
+  chunk_id: string;
+  document_id: string;
+  document: string;
+  page: number;
+  bbox: number[] | null;
+  text: string;
+};
+
+export type AskResult = {
+  qa_id: string;
+  answer: string;
+  route: string;
+  citations: Citation[];
+  grounded: boolean;
+  unmatched_numbers: string[];
+  confidence: "high" | "medium" | "low";
+  not_found: boolean;
+  latency_ms: number;
+};
+
+export type PageData = {
+  document_id: string;
+  document_title: string;
+  source_url: string | null;
+  page_no: number;
+  page_count: number | null;
+  has_text_layer: boolean;
+  ocr_used: boolean;
+  ocr_confidence: number | null;
+  width: number | null;
+  height: number | null;
+  image_url: string | null;
+  chunks: { id: string; text: string; bbox: number[] | null; has_embedding: boolean }[];
+  tables: { id: string; table_title: string | null; bbox: number[] | null; rows_json: string[][] }[];
+};
+
+export type AuditLogRow = {
+  id: string;
+  created_at: string;
+  user: { id: string; name: string; email: string } | null;
+  action: string;
+  entity: string | null;
+  entity_id: string | null;
+  details_json: Record<string, unknown> | null;
+  ip: string | null;
+};
+
+export type AuditFilters = {
+  action?: string;
+  entity?: string;
+  user_email?: string;
+  from_date?: string;
+  to_date?: string;
+};
+
+export function listAuditLog(filters: AuditFilters): Promise<AuditLogRow[]> {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value) params.set(key, value);
+  }
+  const qs = params.toString();
+  return api<AuditLogRow[]>(`/audit${qs ? `?${qs}` : ""}`);
+}
+
+export function listAuditActions(): Promise<string[]> {
+  return api<string[]>("/audit/actions");
+}
+
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -111,7 +181,19 @@ export async function api<T>(path: string, init: RequestInit = {}, retry = true)
   }
   if (res.status === 401 && retry && (await refreshTokens())) return api<T>(path, init, false);
   if (!res.ok) throw new ApiError(res.status, await errorMessage(res));
+  if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
+}
+
+/** Fetch an authenticated image (e.g. a page render) as an object URL for <img src>. */
+export async function fetchImageUrl(path: string, retry = true): Promise<string> {
+  const headers = new Headers();
+  const token = read(ACCESS);
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  const res = await fetch(`${API_URL}${path}`, { headers });
+  if (res.status === 401 && retry && (await refreshTokens())) return fetchImageUrl(path, false);
+  if (!res.ok) throw new ApiError(res.status, await errorMessage(res));
+  return URL.createObjectURL(await res.blob());
 }
 
 export async function login(email: string, password: string): Promise<void> {
@@ -122,6 +204,14 @@ export async function login(email: string, password: string): Promise<void> {
   });
   if (!res.ok) throw new ApiError(res.status, await errorMessage(res));
   saveTokens(await res.json());
+}
+
+export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  await api<void>("/me/password", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+  });
 }
 
 /** Multipart upload with a progress callback (fetch cannot report upload progress). */

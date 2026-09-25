@@ -51,6 +51,8 @@ class PageOut(BaseModel):
     """One page for the document viewer: text chunks and tables with highlight boxes."""
 
     document_id: uuid.UUID
+    document_title: str
+    source_url: str | None
     page_no: int
     page_count: int | None
     has_text_layer: bool

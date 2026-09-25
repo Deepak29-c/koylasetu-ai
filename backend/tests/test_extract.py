@@ -310,23 +310,36 @@ def test_llm_answer_none_means_no_facts():
 def test_ask_llm_validates_the_answer(monkeypatch):
     from worker import extract
 
-    class FakeResponse:
-        def __init__(self, content):
-            self.content = content
+    sent = {}
 
-        def raise_for_status(self):
-            pass
+    def fake_chat(system, user, **kwargs):
+        sent.update(kwargs)
+        return reply
 
-        def json(self):
-            return {"message": {"content": self.content}}
-
+    monkeypatch.setattr(extract.llm, "chat", fake_chat)
     extract._ask_llm.cache_clear()
-    monkeypatch.setattr(
-        extract.httpx, "post", lambda *a, **k: FakeResponse('{"metric": "ob_removal"}')
-    )
+    reply = '{"metric": "ob_removal"}'
     assert extract._ask_llm("t", ("h",), ("r",)) == Metric.OB_REMOVAL
+    assert sent["json_schema"]["properties"]["metric"]  # the reply shape is constrained
 
     extract._ask_llm.cache_clear()
-    monkeypatch.setattr(extract.httpx, "post", lambda *a, **k: FakeResponse('{"metric": "gold"}'))
+    reply = '{"metric": "gold"}'
     assert extract._ask_llm("t", ("h",), ("r",)) is None  # not one of our metrics
     extract._ask_llm.cache_clear()
+
+
+def test_ask_llm_never_calls_a_non_local_server(monkeypatch):
+    """The shared client's on-premise guard applies: a cloud URL is refused, no facts guessed."""
+    from app.core.config import get_settings
+    from worker import extract
+
+    monkeypatch.setenv("LLM_BASE_URL", "https://api.example.com")
+    monkeypatch.setenv("ALLOW_EXTERNAL_CALLS", "false")
+    get_settings.cache_clear()
+    monkeypatch.setattr(extract.llm, "_is_local", lambda host: False)
+    try:
+        extract._ask_llm.cache_clear()
+        assert extract._ask_llm("t", ("h",), ("r",)) is None
+    finally:
+        get_settings.cache_clear()
+        extract._ask_llm.cache_clear()

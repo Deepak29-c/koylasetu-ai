@@ -78,7 +78,7 @@ def test_csv_sheet_is_one_table_with_exact_cell_text(tmp_path):
         csv.writer(f).writerows([["Subsidiary", "FY 2024-25"], ["MCL", "1,234.50"], ["NCL", ""]])
     (page,) = parse.parse(path, "text/csv", fake_ocr)
     assert page.tables[0].rows == [["Subsidiary", "FY 2024-25"], ["MCL", "1,234.50"], ["NCL", ""]]
-    assert page.blocks[1].text == "MCL | 1,234.50"
+    assert page.blocks == []  # searchable text comes from the table chunk
 
 
 def test_xlsx_every_sheet_is_a_page(tmp_path):

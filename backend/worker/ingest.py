@@ -16,7 +16,7 @@ from app.core.db import SessionLocal
 from app.models import Chunk, Document, ExtractedTable, Fact, Page
 from app.models.enums import DocumentStatus
 from worker import parse
-from worker.embed import chunk_blocks, embed_document
+from worker.embed import embed_document, page_chunks
 from worker.extract import extract_table, llm_classifier
 from worker.ocr import get_ocr
 
@@ -79,7 +79,7 @@ def run_pipeline(db, doc: Document) -> None:
             db.add(saved)
             db.flush()  # facts point at the table's id
             total_facts += extract_table(db, doc.id, saved, result.ocr_confidence, classify)
-        for draft in chunk_blocks(result.blocks):
+        for draft in page_chunks(result):
             db.add(
                 Chunk(document_id=doc.id, page_no=result.page_no, text=draft.text, bbox=draft.bbox)
             )

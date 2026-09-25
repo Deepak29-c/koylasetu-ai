@@ -211,6 +211,8 @@ def get_page(
     renderable = doc.mime_type == "application/pdf" or doc.mime_type.startswith("image/")
     return PageOut(
         document_id=doc.id,
+        document_title=doc.title,
+        source_url=doc.source_url,
         page_no=page_no,
         page_count=doc.page_count,
         has_text_layer=page.has_text_layer,
