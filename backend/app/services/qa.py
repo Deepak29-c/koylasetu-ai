@@ -29,6 +29,7 @@ from app.models import Chunk, Document, Fact, QaLog, User
 from app.models.enums import QaRoute
 from app.services import grounding
 from app.services.facts_query import FactRow, query_facts
+from app.services.normalise import to_ascii_digits
 from app.services.retrieval import Passage, hybrid_search
 from app.services.router import Filters, route
 
@@ -263,8 +264,19 @@ def usable_numeric_answer(text: str, facts: list[FactRow]) -> bool:
         return False
     if " | " in text or "[DATA" in text.upper() or re.search(r"\[[A-Za-z][a-z]+\]", text):
         return False
+    if re.search(r"\[\s*-?\d", text):  # a figure in brackets: "[235.348 MT] [F1]"
+        return False
     cited = set(_CITED.findall(normalise_citations(text, 0, len(facts))))
-    return bool(cited & {f.ref for f in facts})
+    if not cited & {f.ref for f in facts}:
+        return False
+    # Every figure it cites must be written out: "Odisha [F1] Jharkhand [F2]" says nothing
+    plain = to_ascii_digits(text).replace(",", "")
+    for f in facts:
+        if f.ref in cited:
+            forms = {f.value_raw.replace(",", ""), f"{f.value_std:.2f}", f"{f.value_std:g}"}
+            if not any(s and s in plain for s in forms):
+                return False
+    return True
 
 
 _NOT_FOUND_ANY = re.compile(
