@@ -149,7 +149,7 @@ def decide(
         )
     )
     audit.record(
-        db, f"review_{body.action.lower()}", user_id=user.id, entity="fact", entity_id=fact.id,
+        db, f"review_{body.action.lower()}", actor=user, entity="fact", entity_id=fact.id,
         details={"old": old, "new": new, "comment": body.comment, "label": fact.label},
         request=request,
     )  # fmt: skip
