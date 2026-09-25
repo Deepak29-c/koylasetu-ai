@@ -24,6 +24,22 @@ The full technical spec is [docs/KoylaSetu_AI_Developer_Guide.docx](docs/KoylaSe
 
 Built so far:
 
+**Errors people can act on** (#69, #70):
+- A document whose original file is gone: its page and page-image endpoints return a handled
+  404 (`{"detail": "The original file for \"<title>\" could not be found…", "code":
+  "file_missing"}`) instead of a 500; a file that exists but cannot be opened is a 422
+  (`damaged_file`). The documents list marks such documents (`file_missing`) before anyone
+  clicks, and no longer links them to the viewer
+- Any other unhandled error is caught inside CORSMiddleware (`app/core/errors.py`), so even
+  a 500 carries CORS headers and a generic message; the traceback goes to the server log only
+- When a request fails at the network level, the frontend asks `/health` first and only says
+  "Cannot reach the server" when that fails too
+- A failed document shows a short translated reason (file missing, unsupported file, damaged
+  file, OCR engine missing, AI model server down, unknown). The API returns `failure_reason`
+  / `failure_message`, never `error_message`, which keeps the full technical text for
+  developers (the worker stores it as `[code] ExceptionName: detail`; older rows without the
+  code are mapped on read, no migration)
+
 **Step 3b: NUMERIC route** (guide 9.1), numbers answered from the facts database:
 - Router (rules, no model call): NUMERIC / TEXTUAL / MIXED, and filters: metric, company /
   state, category, coking, period (month, "upto" = year to date, FY, "as on" date),

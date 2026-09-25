@@ -25,7 +25,11 @@ export type DocumentRow = {
   mime_type: string;
   size_bytes: number;
   status: DocumentStatus;
-  error_message: string | null;
+  /** Why it failed, or that its original file is gone: translate with `failure.<code>`. The
+   * raw exception text is never sent (#70). */
+  failure_reason: string | null;
+  failure_message: string | null;
+  file_missing: boolean;
   page_count: number | null;
   pages_done: number;
   created_at: string;
@@ -256,9 +260,29 @@ export class ApiError extends Error {
   constructor(
     public status: number,
     message: string,
+    /** A short code the screen can translate (`failure.<code>` in i18n), when there is one. */
+    public code: string | null = null,
   ) {
     super(message);
   }
+}
+
+const UNREACHABLE = "Cannot reach the KoylaSetu server. Please check that the API is running.";
+const UNREADABLE =
+  "The KoylaSetu server is running, but its reply to this request could not be read. Please try again; if it keeps happening, tell the administrator.";
+
+/**
+ * A fetch that threw. That happens when the server is down - and also when it answered but
+ * the browser would not let the page read the reply (an error response without CORS
+ * headers). Saying "cannot reach the server" for the second sent people to check a server
+ * that was running fine (#69), so ask /health before blaming it.
+ */
+async function unreachable(): Promise<ApiError> {
+  try {
+    const res = await fetch(`${API_URL}/health`);
+    if (res.ok) return new ApiError(0, UNREADABLE, "unreadable_reply");
+  } catch {}
+  return new ApiError(0, UNREACHABLE, "unreachable");
 }
 
 // Tokens live in sessionStorage for the prototype (cleared when the tab closes).
@@ -290,13 +314,16 @@ export function logout() {
   } catch {}
 }
 
-async function errorMessage(res: Response): Promise<string> {
+/** The server's own explanation of a failed response, with its translatable code if any. */
+async function responseError(res: Response): Promise<ApiError> {
   try {
     const body = await res.json();
-    if (typeof body.detail === "string") return body.detail;
-    if (Array.isArray(body.detail)) return body.detail.map((d: { msg: string }) => d.msg).join("; ");
+    const code = typeof body.code === "string" ? body.code : null;
+    if (typeof body.detail === "string") return new ApiError(res.status, body.detail, code);
+    if (Array.isArray(body.detail))
+      return new ApiError(res.status, body.detail.map((d: { msg: string }) => d.msg).join("; "), code);
   } catch {}
-  return `Request failed (${res.status})`;
+  return new ApiError(res.status, `Request failed (${res.status})`);
 }
 
 async function refreshTokens(): Promise<boolean> {
@@ -352,13 +379,13 @@ export async function api<T>(path: string, init: RequestInit = {}, retry = true)
   try {
     res = await fetch(`${API_URL}${path}`, { ...init, headers });
   } catch {
-    throw new ApiError(0, "Cannot reach the KoylaSetu server. Please check that the API is running.");
+    throw await unreachable();
   }
   if (res.status === 401 && retry) {
     if (await refreshTokens()) return api<T>(path, init, false);
     toLoginAgain();
   }
-  if (!res.ok) throw new ApiError(res.status, await errorMessage(res));
+  if (!res.ok) throw await responseError(res);
   if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
 }
@@ -373,7 +400,7 @@ export async function fetchImageUrl(path: string, retry = true): Promise<string>
     if (await refreshTokens()) return fetchImageUrl(path, false);
     toLoginAgain();
   }
-  if (!res.ok) throw new ApiError(res.status, await errorMessage(res));
+  if (!res.ok) throw await responseError(res);
   return URL.createObjectURL(await res.blob());
 }
 
@@ -595,10 +622,10 @@ export async function downloadFile(path: string, filename: string, retry = true)
   try {
     res = await fetch(`${API_URL}${path}`, { headers });
   } catch {
-    throw new ApiError(0, "Cannot reach the KoylaSetu server. Please check that the API is running.");
+    throw await unreachable();
   }
   if (res.status === 401 && retry && (await refreshTokens())) return downloadFile(path, filename, false);
-  if (!res.ok) throw new ApiError(res.status, await errorMessage(res));
+  if (!res.ok) throw await responseError(res);
   const url = URL.createObjectURL(await res.blob());
   const a = document.createElement("a");
   a.href = url;
@@ -641,7 +668,7 @@ export async function login(email: string, password: string): Promise<void> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password }),
   });
-  if (!res.ok) throw new ApiError(res.status, await errorMessage(res));
+  if (!res.ok) throw await responseError(res);
   saveTokens(await res.json());
 }
 
@@ -665,8 +692,9 @@ export function uploadDocuments(
     const token = read(ACCESS);
     if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
     xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total);
-    xhr.onerror = () =>
-      reject(new ApiError(0, "Cannot reach the KoylaSetu server. Please check that the API is running."));
+    xhr.onerror = () => {
+      unreachable().then(reject);
+    };
     xhr.onload = async () => {
       if (xhr.status === 401 && retry && (await refreshTokens())) {
         uploadDocuments(form, onProgress, false).then(resolve, reject);
@@ -678,8 +706,14 @@ export function uploadDocuments(
       } catch {}
       if (xhr.status >= 200 && xhr.status < 300) resolve(body as UploadResult[]);
       else {
-        const detail = (body as { detail?: unknown })?.detail;
-        reject(new ApiError(xhr.status, typeof detail === "string" ? detail : "Upload failed"));
+        const { detail, code } = (body ?? {}) as { detail?: unknown; code?: unknown };
+        reject(
+          new ApiError(
+            xhr.status,
+            typeof detail === "string" ? detail : "Upload failed",
+            typeof code === "string" ? code : null,
+          ),
+        );
       }
     };
     xhr.send(form);

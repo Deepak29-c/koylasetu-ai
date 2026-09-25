@@ -337,6 +337,15 @@ const en = {
   "users.deactivateConfirmBody": "They will not be able to log in. You can reactivate the account later.",
   "login.sessionExpired": "Your session has ended. Please log in again — we will take you back to where you were.",
   "editor.draftRestored": "Restored the unsaved changes you had here.",
+  "failure.file_missing": "The uploaded file could not be found on the server. Please upload it again.",
+  "failure.unsupported_file": "This type of file cannot be read. Upload a PDF, Excel, image or Word file.",
+  "failure.damaged_file": "The file is damaged or could not be opened. Please upload a fresh copy.",
+  "failure.ocr_unavailable": "The text-reading (OCR) engine is not available on the server. Ask the administrator, then use Retry.",
+  "failure.model_unavailable": "The local AI model server was not available. Use Retry once it is running.",
+  "failure.unknown": "Processing failed. Use Retry; if it fails again, tell the administrator.",
+  "failure.server_error": "Something went wrong on the server. Please try again; if it keeps happening, tell the administrator.",
+  "failure.unreachable": "Cannot reach the KoylaSetu server. Please check that the API is running.",
+  "failure.unreadable_reply": "The KoylaSetu server is running, but its reply to this request could not be read. Please try again; if it keeps happening, tell the administrator.",
 };
 
 export type LabelKey = keyof typeof en;
@@ -665,6 +674,15 @@ const hi: Partial<Record<LabelKey, string>> = {
   generatingMonthly: "आंकड़ों से तालिकाएँ बनाई जा रही हैं और टिप्पणियाँ लिखी जा रही हैं…",
   generatingBriefing: "दस्तावेज़ों से आंकड़े और मुख्य बिंदु एकत्र किए जा रहे हैं… इसमें कुछ मिनट लग सकते हैं।",
   remarksByRule: "स्थानीय AI मॉडल उपलब्ध न होने के कारण टिप्पणियाँ नियम के आधार पर लिखी गईं।",
+  "failure.file_missing": "अपलोड की गई फ़ाइल सर्वर पर नहीं मिली। कृपया इसे फिर से अपलोड करें।",
+  "failure.unsupported_file": "इस प्रकार की फ़ाइल पढ़ी नहीं जा सकती। PDF, Excel, चित्र या Word फ़ाइल अपलोड करें।",
+  "failure.damaged_file": "फ़ाइल खराब है या खोली नहीं जा सकी। कृपया इसकी नई प्रति अपलोड करें।",
+  "failure.ocr_unavailable": "सर्वर पर पाठ पढ़ने वाला (OCR) इंजन उपलब्ध नहीं है। प्रशासक से संपर्क करें, फिर पुनः प्रयास करें।",
+  "failure.model_unavailable": "स्थानीय AI मॉडल सर्वर उपलब्ध नहीं था। उसके चालू होने पर पुनः प्रयास करें।",
+  "failure.unknown": "प्रोसेसिंग विफल रही। पुनः प्रयास करें; फिर भी विफल हो तो प्रशासक को बताएं।",
+  "failure.server_error": "सर्वर पर कुछ गड़बड़ हो गई। कृपया फिर से प्रयास करें; बार-बार ऐसा हो तो प्रशासक को बताएं।",
+  "failure.unreachable": "KoylaSetu सर्वर से संपर्क नहीं हो पा रहा है। कृपया जाँचें कि API चल रहा है।",
+  "failure.unreadable_reply": "KoylaSetu सर्वर चल रहा है, पर इस अनुरोध का उत्तर पढ़ा नहीं जा सका। कृपया फिर से प्रयास करें; बार-बार ऐसा हो तो प्रशासक को बताएं।",
 };
 
 export type Lang = "en" | "hi";
@@ -693,6 +711,21 @@ export function setLang(lang: Lang) {
     localStorage.setItem(KEY, lang);
   } catch {}
   window.dispatchEvent(new Event(EVENT));
+}
+
+/** The label for an error/failure code from the server (`failure.<code>`), or null for a
+ * code this screen has no sentence for - then show the server's own English message. */
+export function failureKey(code: string | null | undefined): LabelKey | null {
+  const key = `failure.${code}`;
+  return code && key in en ? (key as LabelKey) : null;
+}
+
+/** What to show for a failed request: the translated sentence when the server sent a known
+ * `code` (see ApiError), otherwise the error's own message. */
+export function errorText(e: unknown, t: (key: LabelKey) => string): string {
+  const key = failureKey((e as { code?: string | null } | null)?.code);
+  if (key) return t(key);
+  return e instanceof Error ? e.message : String(e);
 }
 
 export function useT() {
