@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Activity,
   ClipboardCheck,
   Cloud,
   FilePlus2,
@@ -10,6 +11,8 @@ import {
   House,
   Inbox,
   Languages,
+  LayoutTemplate,
+  ListChecks,
   LogOut,
   Menu,
   MessageSquareText,
@@ -91,6 +94,9 @@ const GROUPS: NavGroup[] = [
     label: "nav.admin",
     items: [
       { href: "/admin/users", label: "users", icon: Users, show: has("manage_admin") },
+      { href: "/admin/templates", label: "adminTemplates.title", icon: LayoutTemplate, show: has("manage_admin") },
+      { href: "/admin/rules", label: "adminRules.title", icon: ListChecks, show: has("manage_admin") },
+      { href: "/admin/status", label: "adminStatus.title", icon: Activity, show: has("manage_admin") },
       { href: "/audit", label: "auditLog", icon: ScrollText, show: has("view_audit") },
     ],
   },
