@@ -15,8 +15,18 @@ redis>=5.0
 rq>=1.16
 httpx>=0.27
 
+# W1 ingestion: PDF text/layout/tables, OCR (Tesseract binary is installed in the Dockerfile),
+# Excel/CSV and Word
+pymupdf>=1.24
+pytesseract>=0.3.10
+pillow>=10.4
+pandas>=2.2
+openpyxl>=3.1
+xlrd>=2.0
+python-docx>=1.1
+
 # Added when their module is built (kept out for now so the image stays small):
-#   W1 ingestion: pymupdf, paddleocr, pytesseract, opencv-python-headless, docling, pdfplumber, pandas, openpyxl
+#   W1 extras if Tesseract quality is not enough: paddleocr, opencv-python-headless, docling
 #   W3 Q&A: sqlglot
 #   W4 reports: docxtpl, matplotlib
 #   Topics: bertopic, keybert, wordcloud
