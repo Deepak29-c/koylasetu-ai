@@ -213,8 +213,8 @@ cd backend
 cd ../frontend && npm install && npm run dev        # another terminal
 ```
 
-For Q&A, install Ollama from https://ollama.com and pull the models:
-`ollama pull bge-m3` and `ollama pull qwen2.5:3b-instruct`.
+For Q&A, install Ollama and pull the two models: see
+[section 10](#10-local-ai-model-server-ollama-without-docker).
 
 | Problem | Fix |
 |---|---|
@@ -223,3 +223,114 @@ For Q&A, install Ollama from https://ollama.com and pull the models:
 | `password authentication failed for user "koyla"` | Re-run the script: it resets the role's password to the one in `.env` |
 | Port 5432 already used by another Postgres | The script says which version answered. Stop the other server, or point `DATABASE_URL` and `--admin-url` at the right port (`pg_lsclusters` on Debian / Ubuntu) |
 | `.env still points at Docker hosts` | Your `.env` came from the Docker setup: re-run with `--fix-env` to switch just those lines to `localhost` |
+
+## 10. Local AI model server (Ollama) without Docker
+
+Every AI feature (answering questions, writing reports, search embeddings) calls a model server
+on **this machine**. Nothing is sent to an outside AI company: `app/llm/client.py` refuses any
+`LLM_BASE_URL` that is not this machine or the local network unless `ALLOW_EXTERNAL_CALLS=true`,
+and that setting must stay `false`.
+
+**`ALLOW_EXTERNAL_CALLS`** is the only switch that lets the app send text to a model server
+outside this machine / local network. It is `false` in the code default and in `.env.example`.
+Never set it to `true` on a machine with real documents; `scripts/check_llm.py` fails while it is.
+
+We need two models:
+
+| Model | Setting | Used for | Download |
+|---|---|---|---|
+| `qwen2.5:3b-instruct` | `LLM_MODEL` | Writing answers and reports (laptops, CPU only) | ~1.9 GB |
+| `qwen2.5:7b-instruct` | `LLM_MODEL` | Same, better answers (GPU or 16 GB+ RAM, demo machine) | ~4.7 GB |
+| `bge-m3` | `EMBED_MODEL` | Search embeddings (1024 numbers per passage) | ~1.2 GB |
+
+### Disk, memory and time
+
+| | 3B + bge-m3 | 7B + bge-m3 |
+|---|---|---|
+| Disk (models) | 3.1 GB (`ollama list`: 1.9 GB + 1.2 GB) | ~5.9 GB (4.7 GB + 1.2 GB) |
+| Disk (Ollama program) | ~1-2 GB (includes GPU libraries) | same |
+| Memory while loaded, `LLM_NUM_CTX=8192` | 2.3 GB + 0.7 GB (`ollama ps`) | ~5.5 GB + 0.7 GB |
+| RAM to have in the machine | 8 GB works, 16 GB comfortable | 16 GB, or a GPU with 8 GB |
+| Download time | 2 min 46 s + 4 min 28 s here (~7 MB/s) | ~12 min at the same speed |
+| Answer to a question | ~10 s on a laptop GPU (RTX 3050), ~30-60 s CPU only | GPU: ~2x the 3B time; CPU only: too slow, use 3B |
+
+Measured on a Windows 11 laptop (i7-12650H, 16 GB RAM, RTX 3050 Laptop GPU, Ollama 0.34.4);
+the 7B figures are estimates, it was not pulled here.
+
+Models are stored in `~/.ollama/models` (Windows: `C:\Users\<you>\.ollama\models`). Set the
+`OLLAMA_MODELS` environment variable before starting Ollama to keep them on another drive.
+The first call after starting takes longer: the model is loaded into memory then (here 31 s
+for `bge-m3`, 56 s for the 3B model the very first time, ~2 s after that), and unloaded again
+after 5 idle minutes.
+
+### Install
+
+| OS | Install | Start the server |
+|---|---|---|
+| macOS | Download from https://ollama.com/download, or `brew install ollama` | Open the Ollama app (menu bar icon), or `ollama serve` (Homebrew: `brew services start ollama`) |
+| Windows 10/11 | Installer from https://ollama.com/download, or `winget install Ollama.Ollama` | Starts by itself after install and at login (tray icon); otherwise `ollama serve` |
+| Linux | `curl -fsSL https://ollama.com/install.sh \| sh` | Installed as a systemd service: `sudo systemctl start ollama` |
+
+An NVIDIA GPU (or Apple Silicon) is used automatically when present; nothing to configure.
+
+### Download the models (once)
+
+```bash
+ollama pull bge-m3
+ollama pull qwen2.5:3b-instruct       # or qwen2.5:7b-instruct on a GPU / 16 GB+ machine
+ollama list                           # both should be listed
+```
+
+### Point the app at it
+
+In your `.env` (repo root or `backend/`):
+
+```
+LLM_BASE_URL=http://127.0.0.1:11434   # localhost also works; see the Windows note below
+LLM_MODEL=qwen2.5:3b-instruct         # must match a model in `ollama list`
+EMBED_MODEL=bge-m3
+ALLOW_EXTERNAL_CALLS=false
+```
+
+`.env.example` has `LLM_BASE_URL=http://ollama:11434`, which is the Docker service name and
+only works inside Docker Compose; change it to `localhost` when Ollama runs natively
+(`scripts/setup_local_db.py` from section 9 already does this when it creates your `.env`).
+Without any `.env` the code defaults are the same as the block above (with `localhost`).
+
+**Windows note:** Ollama listens on `127.0.0.1` only, and on Windows `localhost` is tried as
+IPv6 (`::1`) first, which costs about 2 s on **every** call. Measured with
+`scripts/check_llm.py`: server check 4.5 s with `localhost` vs 0.4 s with `127.0.0.1`, a
+warm embedding 2.3 s vs 0.3 s, a warm chat 2.7 s vs 0.7 s. Use `http://127.0.0.1:11434`.
+
+### Check it
+
+```bash
+cd backend
+.venv/Scripts/python ../scripts/check_llm.py      # Linux/macOS: .venv/bin/python
+```
+
+It checks that the server is local and `ALLOW_EXTERNAL_CALLS=false`, that the server answers,
+that both models are pulled (printing the `ollama pull` command for any missing one), that an
+embedding has 1024 numbers, and that a tiny question gets an answer, with timings. It ends
+with `Ready: questions can be answered by the local model.` and exit code 0.
+
+If documents were uploaded before `bge-m3` was pulled, fill in their embeddings once:
+`.venv/Scripts/python -c "from worker.embed import embed_missing; print(embed_missing())"`
+
+### Problems
+
+| Problem | Fix |
+|---|---|
+| `[FAIL] 2. server: no answer from http://localhost:11434` | Ollama is not running: open the Ollama app, or `ollama serve` (Linux: `sudo systemctl start ollama`) |
+| `no answer from http://ollama:11434` | `ollama` is the Docker service name. Set `LLM_BASE_URL=http://localhost:11434` in `.env` |
+| `[FAIL] 1. local-only: ... is not this machine or the local network` | `LLM_BASE_URL` points outside. Use `http://localhost:11434`; do not set `ALLOW_EXTERNAL_CALLS=true` |
+| `[FAIL] 3. models: missing ...` | Run the `ollama pull` command it prints; the name must match `ollama list` exactly |
+| `model server error 404 ... not found` in the app | `LLM_MODEL` / `EMBED_MODEL` in `.env` differ from what was pulled (e.g. 7b set, 3b pulled) |
+| `expected 1 vectors of size 1024` | `EMBED_MODEL` is not `bge-m3`; the database column is 1024 wide, so use `bge-m3` |
+| `address already in use` / `Only one usage of each socket address` on `ollama serve` | Ollama is already running (app or service), or the Docker `ollama` container holds port 11434: stop one of them |
+| `model requires more system memory` | Close other apps, use the 3B model, or lower `LLM_NUM_CTX` to 4096 |
+| First answer takes minutes | The model is loading into memory; later answers are faster. On CPU the 7B model is slow; use 3B |
+| Every call takes ~2 s longer than it should (Windows) | Use `LLM_BASE_URL=http://127.0.0.1:11434` instead of `localhost` (see the Windows note) |
+| Download stops or is very slow | Run `ollama pull` again: it resumes where it stopped |
+| `ollama pull` fails with `lookup ... no such host` | A DNS / network blip (it happened once here): run the same `ollama pull` again |
+| Pulled models filled drive C: | Set `OLLAMA_MODELS` to a folder on another drive, restart Ollama, pull again |
