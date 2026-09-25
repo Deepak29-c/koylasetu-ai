@@ -5,6 +5,8 @@ Verified AI Reporting & Parliamentary-Reply Assistant for CMPDI / CIL (SIH 2026,
 **Core rule:** numbers come from the database, words come from the AI, and every figure has a source.
 The full technical spec is [docs/KoylaSetu_AI_Developer_Guide.docx](docs/KoylaSetu_AI_Developer_Guide.docx).
 
+**New to the project? Start with [docs/SETUP.md](docs/SETUP.md)** for prerequisites, first-time setup and common problems.
+
 ## What's in the repo
 
 | Path | What |
@@ -37,10 +39,17 @@ Uploads currently end as FAILED with "not built yet". That's expected.
 
 ```bash
 cp .env.example .env          # then change JWT_SECRET and SEED_DEMO_PASSWORD
-docker compose up -d --build
+docker compose up -d --build db redis api worker web
+docker exec koyla-api python -m app.scripts.seed
+```
+
+When we reach the Q&A step, also start the local AI model server and pull the models
+(multi-GB download):
+
+```bash
+docker compose up -d ollama
 docker exec ollama ollama pull qwen2.5:7b-instruct
 docker exec ollama ollama pull bge-m3
-docker exec koyla-api python -m app.scripts.seed
 ```
 
 Web: http://localhost:3000 · API docs: http://localhost:8000/docs
