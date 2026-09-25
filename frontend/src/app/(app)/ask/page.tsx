@@ -1,14 +1,16 @@
 "use client";
 
-import { Copy, MessageSquareText, RotateCcw, Send, ThumbsDown, ThumbsUp } from "lucide-react";
+import { Copy, FilePlus2, MessageSquareText, RotateCcw, Send, ThumbsDown, ThumbsUp } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 
+import { useMe } from "@/components/AppShell";
 import AnswerText from "@/components/ask/AnswerText";
 import AskProgress from "@/components/ask/AskProgress";
 import FiguresTable from "@/components/ask/FiguresTable";
 import RecentQuestions from "@/components/ask/RecentQuestions";
 import { chipSources, plainAnswer } from "@/components/ask/sources";
+import UseInReportDrawer from "@/components/ask/UseInReportDrawer";
 import { SourcesList } from "@/components/Citation";
 import EmptyState from "@/components/ui/EmptyState";
 import Alert from "@/components/ui/Alert";
@@ -23,6 +25,7 @@ import { api, type AskResult, getQaAnswer, listQaHistory, type QaHistoryRow } fr
 import { cn } from "@/lib/cn";
 import { errorText } from "@/lib/errors";
 import { useT } from "@/lib/i18n";
+import { can } from "@/lib/permissions";
 
 export default function AskPage() {
   // useSearchParams needs a Suspense boundary for Next's static render pass.
@@ -36,6 +39,8 @@ export default function AskPage() {
 function AskPageInner() {
   const { t } = useT();
   const toast = useToast();
+  const me = useMe();
+  const canUseInReport = can(me, "edit_reports");
   // The home page's quick-ask box hands the question over as ?q=…
   const params = useSearchParams();
   const prefill = params.get("q")?.trim() ?? "";
@@ -53,6 +58,7 @@ function AskPageInner() {
   // What failed, so "Retry" repeats it: asking again, or opening the same saved answer.
   const [retryAction, setRetryAction] = useState<(() => void) | null>(null);
   const [feedback, setFeedback] = useState<1 | -1 | null>(null);
+  const [reporting, setReporting] = useState(false);
   // Each ask or open takes the next number; a reply that is no longer the latest is dropped.
   const requestSeq = useRef(0);
 
@@ -269,6 +275,17 @@ function AskPageInner() {
                     <Button variant="outline" size="sm" icon={<Copy size={14} aria-hidden />} onClick={copyAnswer}>
                       {t("ask.copyAnswer")}
                     </Button>
+                    {canUseInReport && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        icon={<FilePlus2 size={14} aria-hidden />}
+                        onClick={() => setReporting(true)}
+                        disabled={busy !== null}
+                      >
+                        {t("ask.useInReport")}
+                      </Button>
+                    )}
                   </>
                 }
               />
@@ -319,6 +336,14 @@ function AskPageInner() {
 
         <RecentQuestions rows={historyRows} currentId={result?.qa_id} onOpen={openSaved} disabled={busy !== null} />
       </div>
+
+      {reporting && result && (
+        <UseInReportDrawer
+          result={result}
+          question={result.question ?? question}
+          onClose={() => setReporting(false)}
+        />
+      )}
     </div>
   );
 }

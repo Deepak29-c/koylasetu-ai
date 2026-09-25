@@ -1,8 +1,15 @@
 import jwt
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.cookies import (
+    REFRESH_COOKIE,
+    clear_auth_cookies,
+    csrf_refused,
+    has_csrf_header,
+    set_auth_cookies,
+)
 from app.core.db import get_db
 from app.core.deps import get_current_user
 from app.core.rbac import Permission, has_permission
@@ -14,8 +21,20 @@ from app.services import audit
 router = APIRouter(tags=["auth"])
 
 
+def _issue(user: User, response: Response) -> TokenOut:
+    """New tokens as httpOnly cookies for the browser, and in the body for scripts."""
+    tokens = TokenOut(
+        access_token=create_token(user.id, "access"),
+        refresh_token=create_token(user.id, "refresh"),
+    )
+    set_auth_cookies(response, tokens.access_token, tokens.refresh_token)
+    return tokens
+
+
 @router.post("/auth/login", response_model=TokenOut)
-def login(body: LoginIn, request: Request, db: Session = Depends(get_db)) -> TokenOut:
+def login(
+    body: LoginIn, request: Request, response: Response, db: Session = Depends(get_db)
+) -> TokenOut:
     user = db.scalar(select(User).where(User.email == body.email))
     if user is None or not user.is_active or not verify_password(body.password, user.password_hash):
         audit.record(
@@ -30,25 +49,40 @@ def login(body: LoginIn, request: Request, db: Session = Depends(get_db)) -> Tok
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Wrong email or password")
     audit.record(db, "login", actor=user, entity="user", entity_id=user.id, request=request)
     db.commit()
-    return TokenOut(
-        access_token=create_token(user.id, "access"),
-        refresh_token=create_token(user.id, "refresh"),
-    )
+    return _issue(user, response)
 
 
 @router.post("/auth/refresh", response_model=TokenOut)
-def refresh(body: RefreshIn, db: Session = Depends(get_db)) -> TokenOut:
+def refresh(
+    request: Request,
+    response: Response,
+    body: RefreshIn | None = None,
+    db: Session = Depends(get_db),
+) -> TokenOut:
+    """Scripts send the refresh token in the body; the browser sends its refresh cookie."""
+    expired = HTTPException(status.HTTP_401_UNAUTHORIZED, "Session expired")
+    if body is not None:
+        token = body.refresh_token
+    else:
+        token = request.cookies.get(REFRESH_COOKIE)
+        if token is None:
+            raise expired
+        if not has_csrf_header(request):
+            raise csrf_refused()
     try:
-        user_id = decode_token(body.refresh_token, "refresh")
+        user_id = decode_token(token, "refresh")
     except jwt.InvalidTokenError:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Session expired") from None
+        raise expired from None
     user = db.get(User, user_id)
     if user is None or not user.is_active:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Session expired")
-    return TokenOut(
-        access_token=create_token(user.id, "access"),
-        refresh_token=create_token(user.id, "refresh"),
-    )
+        raise expired
+    return _issue(user, response)
+
+
+@router.post("/auth/logout", status_code=status.HTTP_204_NO_CONTENT)
+def logout(response: Response) -> None:
+    """Remove the login cookies. Needs no valid session, so an expired one can still leave."""
+    clear_auth_cookies(response)
 
 
 @router.get("/me", response_model=MeOut)
