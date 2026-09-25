@@ -6,7 +6,7 @@ import { Suspense, useEffect, useState } from "react";
 
 import PageImage from "@/components/PageImage";
 import { api, type PageData } from "@/lib/api";
-import { useT } from "@/lib/i18n";
+import { errorText, useT } from "@/lib/i18n";
 
 export default function DocumentViewerPage() {
   return (
@@ -27,7 +27,7 @@ function Viewer() {
   const box = search.get("box")?.split(",").map(Number).filter((n) => !Number.isNaN(n));
 
   const [data, setData] = useState<PageData | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -37,7 +37,7 @@ function Viewer() {
         setData(d);
         setError(null);
       },
-      (e: unknown) => !cancelled && setError(e instanceof Error ? e.message : String(e)),
+      (e: unknown) => !cancelled && setError(e),
     );
     return () => {
       cancelled = true;
@@ -61,10 +61,10 @@ function Viewer() {
     </Link>
   );
 
-  if (error)
+  if (error != null)
     return (
       <div className="space-y-4">
-        <p className="rounded border border-red-300 bg-red-50 p-3 text-red-800">{error}</p>
+        <p className="rounded border border-red-300 bg-red-50 p-3 text-red-800">{errorText(error, t)}</p>
         {backLink}
       </div>
     );

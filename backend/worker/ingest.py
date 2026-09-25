@@ -15,6 +15,7 @@ from sqlalchemy import delete
 from app.core.db import SessionLocal
 from app.models import Chunk, Document, ExtractedTable, Fact, Page
 from app.models.enums import DocType, DocumentStatus
+from app.services import failures
 from app.services.queue import enqueue_topics_refresh
 from worker import parse
 from worker.embed import embed_document, page_chunks
@@ -40,8 +41,11 @@ def process_document(document_id: str) -> None:
         except Exception as exc:
             db.rollback()
             doc.status = DocumentStatus.FAILED
-            doc.error_message = f"{type(exc).__name__}: {exc}"[:2000]
+            # Code first, then the technical detail. The API only ever returns the code
+            # (as a translated reason), never this text: it names server paths (#70).
+            doc.error_message = failures.record(exc)
             db.commit()
+            log.error("Document %s failed (%s)", doc.id, failures.classify(exc), exc_info=exc)
             raise
 
 
