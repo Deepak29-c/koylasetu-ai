@@ -111,6 +111,7 @@ export async function api<T>(path: string, init: RequestInit = {}, retry = true)
   }
   if (res.status === 401 && retry && (await refreshTokens())) return api<T>(path, init, false);
   if (!res.ok) throw new ApiError(res.status, await errorMessage(res));
+  if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
 }
 
@@ -122,6 +123,14 @@ export async function login(email: string, password: string): Promise<void> {
   });
   if (!res.ok) throw new ApiError(res.status, await errorMessage(res));
   saveTokens(await res.json());
+}
+
+export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  await api<void>("/me/password", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+  });
 }
 
 /** Multipart upload with a progress callback (fetch cannot report upload progress). */
