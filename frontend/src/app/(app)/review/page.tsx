@@ -4,7 +4,14 @@ import { useCallback, useEffect, useState } from "react";
 
 import { useMe } from "@/components/AppShell";
 import PageImage from "@/components/PageImage";
-import { api, type Fact, type PageData, type ReviewItem, type ReviewSummary } from "@/lib/api";
+import {
+  api,
+  type DecidedItem,
+  type Fact,
+  type PageData,
+  type ReviewItem,
+  type ReviewSummary,
+} from "@/lib/api";
 import { type LabelKey, useT } from "@/lib/i18n";
 
 const SEV_STYLE = {
@@ -19,6 +26,18 @@ const DONE_LABEL: Record<Decision, LabelKey> = {
   ACCEPT: "reviewDoneAccepted",
   EDIT: "reviewDoneCorrected",
   REJECT: "reviewDoneRejected",
+};
+
+const ACTION_LABEL: Record<Decision, LabelKey> = {
+  ACCEPT: "reviewActionAccept",
+  EDIT: "reviewActionEdit",
+  REJECT: "reviewActionReject",
+};
+
+const ACTION_STYLE: Record<Decision, string> = {
+  ACCEPT: "bg-green-100 text-green-800",
+  EDIT: "bg-blue-100 text-blue-800",
+  REJECT: "bg-red-100 text-red-800",
 };
 
 // What the reviewer just decided, shown for a few seconds after the queue moves on.
@@ -39,7 +58,27 @@ export default function ReviewPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<Toast | null>(null);
+  // "decided": figures already accepted / corrected / rejected, so a mistake can be changed
+  const [tab, setTab] = useState<"waiting" | "decided">("waiting");
+  const [decided, setDecided] = useState<DecidedItem[] | null>(null);
+  const [decidedId, setDecidedId] = useState<string | null>(null);
   const allowed = me.permissions.includes("review_facts");
+
+  const loadDecided = useCallback(
+    () =>
+      api<DecidedItem[]>("/review/decided").then(
+        (list) => {
+          setDecided(list);
+          setDecidedId((cur) => (cur && list.some((d) => d.fact.id === cur) ? cur : (list[0]?.fact.id ?? null)));
+        },
+        (e: unknown) => setError(e instanceof Error ? e.message : String(e)),
+      ),
+    [],
+  );
+
+  useEffect(() => {
+    if (allowed && tab === "decided") loadDecided();
+  }, [allowed, tab, loadDecided]);
 
   useEffect(() => {
     if (!toast) return;
@@ -68,11 +107,21 @@ export default function ReviewPage() {
 
   const selected = items?.find((i) => i.fact.id === selectedId) ?? null;
 
+  const selectedDecided = decided?.find((d) => d.fact.id === decidedId) ?? null;
+
   function done(fact: Fact, decision: Decision, figure: string) {
     const rest = (items ?? []).filter((i) => i.fact.id !== fact.id);
     setItems(rest);
     setSelectedId(rest[0]?.fact.id ?? null);
     setToast({ id: Date.now(), decision, figure, label: fact.label, last: rest.length === 0 });
+    api<ReviewSummary>("/review/summary").then(setSummary, () => {});
+  }
+
+  function changed(fact: Fact, decision: Decision, figure: string) {
+    // The figure stays in the decided list, now with its new decision at the top
+    setToast({ id: Date.now(), decision, figure, label: fact.label, last: false });
+    setDecidedId(fact.id);
+    loadDecided();
     api<ReviewSummary>("/review/summary").then(setSummary, () => {});
   }
 
@@ -127,11 +176,81 @@ export default function ReviewPage() {
         </div>
       )}
 
-      {error && <p className="rounded border border-red-300 bg-red-50 p-3 text-red-800">{error}</p>}
-      {items === null && !error && <p className="text-gray-500">{t("loading")}</p>}
-      {items?.length === 0 && <p className="rounded border bg-white p-4 text-gray-700">{t("nothingToReview")}</p>}
+      <div role="tablist" className="flex gap-2 border-b">
+        {(
+          [
+            ["waiting", `${t("reviewTabWaiting")}${items ? ` (${items.length})` : ""}`],
+            ["decided", t("reviewTabDecided")],
+          ] as const
+        ).map(([key, label]) => (
+          <button
+            key={key}
+            role="tab"
+            aria-selected={tab === key}
+            onClick={() => setTab(key)}
+            className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium ${
+              tab === key ? "border-brand text-brand" : "border-transparent text-gray-600 hover:text-brand"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
 
-      {items && items.length > 0 && (
+      {error && <p className="rounded border border-red-300 bg-red-50 p-3 text-red-800">{error}</p>}
+
+      {tab === "decided" && (
+        <>
+          {decided === null && !error && <p className="text-gray-500">{t("loading")}</p>}
+          {decided?.length === 0 && <p className="rounded border bg-white p-4 text-gray-700">{t("reviewNothingDecided")}</p>}
+          {decided && decided.length > 0 && (
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,5fr)]">
+              <ul className="max-h-[75vh] space-y-2 overflow-y-auto pr-1">
+                {decided.map((d) => (
+                  <li key={d.fact.id}>
+                    <button
+                      onClick={() => setDecidedId(d.fact.id)}
+                      className={`block w-full rounded border p-3 text-left text-sm ${
+                        d.fact.id === decidedId ? "border-brand bg-brand-soft" : "bg-white hover:border-brand"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${ACTION_STYLE[d.action]}`}>
+                          {t(ACTION_LABEL[d.action])}
+                        </span>
+                        <span className="font-semibold">
+                          {d.fact.value_raw} {d.fact.unit}
+                        </span>
+                      </div>
+                      <div className="mt-1 text-gray-700">{d.fact.label}</div>
+                      <div className="text-xs text-gray-500">
+                        {d.document_title} · p.{d.fact.page_no} · {d.decided_by}
+                      </div>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              {selectedDecided ? (
+                <ReviewDetail
+                  key={`${selectedDecided.fact.id}-${selectedDecided.decided_at}`}
+                  item={selectedDecided}
+                  earlier={selectedDecided}
+                  onDone={changed}
+                />
+              ) : (
+                <p className="text-gray-500">{t("selectItem")}</p>
+              )}
+            </div>
+          )}
+        </>
+      )}
+
+      {tab === "waiting" && items === null && !error && <p className="text-gray-500">{t("loading")}</p>}
+      {tab === "waiting" && items?.length === 0 && (
+        <p className="rounded border bg-white p-4 text-gray-700">{t("nothingToReview")}</p>
+      )}
+
+      {tab === "waiting" && items && items.length > 0 && (
         <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,5fr)]">
           <ul className="max-h-[75vh] space-y-2 overflow-y-auto pr-1">
             {items.map((item) => (
@@ -172,9 +291,12 @@ export default function ReviewPage() {
 
 function ReviewDetail({
   item,
+  earlier,
   onDone,
 }: {
-  item: ReviewItem;
+  item: Pick<ReviewItem, "fact" | "document_title" | "issues" | "related">;
+  /** Set when the figure was already decided: shown above the form; a comment is then required. */
+  earlier?: Pick<DecidedItem, "action" | "comment" | "decided_by" | "decided_at">;
   onDone: (fact: Fact, decision: Decision, figure: string) => void;
 }) {
   const { t } = useT();
@@ -193,8 +315,8 @@ function ReviewDetail({
   }, [f.document_id, f.page_no]);
 
   async function submit(action: Decision) {
-    if (action !== "ACCEPT" && !comment.trim()) {
-      setError(t("commentRequired"));
+    if ((action !== "ACCEPT" || earlier) && !comment.trim()) {
+      setError(t(earlier ? "reviewChangeNeedsComment" : "commentRequired"));
       return;
     }
     setBusy(true);
@@ -280,6 +402,19 @@ function ReviewDetail({
         </div>
 
         <div className="space-y-3 rounded border bg-white p-4">
+          {earlier && (
+            <div className="rounded bg-gray-50 p-3 text-sm">
+              <p>
+                <span className="font-medium">{t("reviewEarlier")}:</span>{" "}
+                <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${ACTION_STYLE[earlier.action]}`}>
+                  {t(ACTION_LABEL[earlier.action])}
+                </span>{" "}
+                · {earlier.decided_by} · {new Date(earlier.decided_at).toLocaleString()}
+              </p>
+              {earlier.comment && <p className="mt-1 text-gray-700">“{earlier.comment}”</p>}
+              <p className="mt-1 text-xs text-gray-600">{t("reviewChangeNeedsComment")}</p>
+            </div>
+          )}
           {mode === "EDIT" && (
             <label className="block">
               <span className="text-sm font-medium">{t("correctValue")}</span>

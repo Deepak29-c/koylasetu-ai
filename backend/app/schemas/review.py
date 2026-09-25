@@ -52,6 +52,20 @@ class ReviewItem(BaseModel):
     created_at: datetime
 
 
+class DecidedItem(BaseModel):
+    """A fact a reviewer already decided, with its latest decision, so it can be changed."""
+
+    fact: FactOut
+    document_title: str
+    issues: list[IssueOut]  # why it was flagged (now resolved)
+    related: list[RelatedFactOut]
+    action: str  # latest decision: ACCEPT / EDIT / REJECT
+    comment: str | None
+    decided_by: str
+    decided_at: datetime
+    decisions: int  # how many times this fact was decided
+
+
 class ReviewDecision(BaseModel):
     action: Literal["ACCEPT", "EDIT", "REJECT"]
     new_value: str | None = Field(default=None, max_length=64)
