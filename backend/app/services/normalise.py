@@ -147,6 +147,7 @@ CIL_SUBSIDIARIES = frozenset({"ECL", "BCCL", "CCL", "WCL", "SECL", "NCL", "MCL",
 ALL_INDIA = "INDIA"  # facts.subsidiary for an all-India total
 
 # Longer names first, so "North Eastern Coalfields" is not also read as ECL.
+_CF_HI = r"कोल\s*(?:फ\u093c?|\u095e)ील्ड(?:्स|स)?"  # "कोलफील्ड्स" and its spellings
 _SUBSIDIARY_ALIASES: list[tuple[str, str]] = sorted(
     [
         ("SECL", r"south\s*-?\s*eastern\s+coalfields?"),
@@ -158,20 +159,49 @@ _SUBSIDIARY_ALIASES: list[tuple[str, str]] = sorted(
         ("NCL", r"northern\s+coalfields?"),
         ("MCL", r"mahanadi\s+coalfields?"),
         ("CIL", r"coal\s+india"),
-        ("CIL", r"कोल\s*इंडिया"),
         ("SCCL", r"singareni(?:\s+collieries)?"),
-        ("SCCL", r"सिंगरेनी"),
         ("CAPTIVE", r"captives?(?:\s*(?:/|&|and)\s*(?:others?|commercial))?"),
+        # Hindi: transliterated names ("नॉर्दर्न कोलफील्ड्स") and translated ones ("उत्तरी")
+        ("SECL", rf"(?:साउथ\s*-?\s*ईस्टर्न|दक्षिण\s*-?\s*पूर्वी)\s*{_CF_HI}"),
+        ("NEC", rf"(?:न[ॉाो]र्थ\s*-?\s*ईस्टर्न|उत्तर\s*-?\s*पूर्वी)\s*{_CF_HI}"),
+        ("ECL", rf"(?:ईस्टर्न|पूर्वी)\s*{_CF_HI}"),
+        ("BCCL", r"भारत\s*कोकिंग\s*(?:कोल|कोयला)"),
+        ("CCL", rf"(?:सेंट्रल|सेन्ट्रल|केंद्रीय|मध्य)\s*{_CF_HI}"),
+        ("WCL", rf"(?:वेस्टर्न|पश्चिमी)\s*{_CF_HI}"),
+        ("NCL", rf"(?:न[ॉाो]र्दर्न|उत्तरी)\s*{_CF_HI}"),
+        ("MCL", rf"महानदी\s*{_CF_HI}"),
+        ("CIL", r"(?:कोल|कोयला)\s*इंडिया"),
+        ("SCCL", r"सिंगरेनी(?:\s*कोलियरीज़?)?"),
+        ("CAPTIVE", r"कैप्टिव"),
     ],
     key=lambda a: -len(a[1]),
 ) + [(code, rf"\b{code.lower()}\b") for code in sorted(CIL_SUBSIDIARIES | {"CIL", "SCCL"})]
+# Company codes written in Devanagari ("सीआईएल", "एनसीएल"). Python's \b is unreliable next to
+# Devanagari vowel signs, so a code must simply not touch another Devanagari letter.
+_SUBSIDIARY_CODES_HI = {
+    "SECL": "एसईसीएल",
+    "BCCL": "बीसीसीएल",
+    "SCCL": "एससीसीएल",
+    "WCL": "डब्ल्यूसीएल",
+    "CIL": "सीआईएल",
+    "ECL": "ईसीएल",
+    "CCL": "सीसीएल",
+    "NCL": "एनसीएल",
+    "MCL": "एमसीएल",
+    "NEC": "एनईसी",
+}
+_SUBSIDIARY_ALIASES += [
+    (code, rf"(?<![\u0900-\u097F]){hi}(?![\u0900-\u097F])")
+    for code, hi in _SUBSIDIARY_CODES_HI.items()
+]
 _SUBSIDIARY_PATTERNS = [(code, re.compile(p, re.IGNORECASE)) for code, p in _SUBSIDIARY_ALIASES]
 
 
 def match_subsidiaries(text: str | None) -> tuple[set[str], str]:
     """Return the subsidiary codes named in `text`, and the text with those names removed.
 
-    "Mahanadi Coalfields", "MCL" and "M.C.L." all give MCL (guide 7.3 alias map).
+    "Mahanadi Coalfields", "MCL", "M.C.L.", "महानदी कोलफील्ड्स" and "एमसीएल" all give MCL
+    (guide 7.3 alias map).
     """
     t = clean_text(text)
     t = re.sub(r"(?<![A-Za-z])([A-Za-z])\.", r"\1", t)  # "M.C.L." -> "MCL"
@@ -261,6 +291,9 @@ class PeriodHint:
 def _month_no(name: str) -> int:
     name = name.lower()
     return _MONTHS.get(name[:3], _MONTHS.get(name, 0))
+
+
+HINDI_MONTHS = {name: no for name, no in _MONTHS.items() if not name.isascii()}  # "दिसंबर": 12
 
 
 def _year(text: str) -> int:
