@@ -35,7 +35,7 @@ export default function ReportDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const me = useMe();
-  const { t } = useT();
+  const { t, locale } = useT();
   const canView =
     me.permissions.includes("edit_reports") ||
     me.permissions.includes("approve_reports") ||
@@ -334,7 +334,7 @@ export default function ReportDetailPage() {
           {versions.map((v) => (
             <li key={v.version} className="border-b pb-2 last:border-0">
               <span className="font-medium">v{v.version}</span> — {v.change_note ?? "—"} ({t("by")}{" "}
-              {v.editor.name}, {new Date(v.created_at).toLocaleString("en-IN")})
+              {v.editor.name}, {new Date(v.created_at).toLocaleString(locale)})
             </li>
           ))}
         </ul>

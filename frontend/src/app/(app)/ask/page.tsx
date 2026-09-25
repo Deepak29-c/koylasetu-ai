@@ -66,7 +66,7 @@ function AnswerText({ result }: { result: AskResult }) {
           <span key={i}>
             {part.split(redRe).map((piece, j) =>
               unmatched.includes(piece) ? (
-                <mark key={j} className="rounded bg-red-100 px-0.5 text-red-800" title="Not found in sources">
+                <mark key={j} className="rounded bg-red-100 px-0.5 text-red-800" title={t("unmatched")}>
                   {piece}
                 </mark>
               ) : (
