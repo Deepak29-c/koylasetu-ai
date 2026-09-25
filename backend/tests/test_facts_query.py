@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from sqlalchemy.dialects import postgresql
 
 from app.models.enums import Metric
-from app.services.facts_query import _statement, query_facts
+from app.services.facts_query import FactRow, _statement, query_facts
 from app.services.router import Filters
 
 HQ = SimpleNamespace(org_unit=SimpleNamespace(code="CIL_HQ"), org_unit_id=None)
@@ -42,3 +42,14 @@ def test_coking_question_never_gets_an_overall_figure():
     f = Filters(metrics=[Metric.COKING_COAL_PRODUCTION], coking=True)
     query_facts(None, HQ, f, run=lambda stmt: seen.append(stmt) or [])
     assert len(seen) == 1
+
+
+def test_resource_month_reads_as_on():
+    row = FactRow(
+        ref="F1", fact_id=None, metric="coal_resource", subsidiary="INDIA", state=None,
+        category=None, period_type="MONTH", period="2025-04", value_raw="400715.45", unit="MT",
+        value_std=400715.45, status="VERIFIED", document_id=None, document_title="Inventory",
+        page_no=29, bbox=None,
+    )  # fmt: skip
+    assert row.period_text == "as on Apr 2025"
+    assert FactRow(**{**row.__dict__, "metric": "coal_production"}).period_text == "Apr 2025"
