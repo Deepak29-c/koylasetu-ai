@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     llm_model: str = "qwen2.5:7b-instruct"
     embed_model: str = "bge-m3"
     ocr_engine: str = "paddle"
+    # Ask the local LLM to name a table's metric when the keyword rules find none (guide 7.2).
+    extract_use_llm: bool = True
     allow_external_calls: bool = False
 
     jwt_secret: str = "change-me"

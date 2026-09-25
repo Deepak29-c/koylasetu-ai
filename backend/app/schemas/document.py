@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
-from app.models.enums import DocType, DocumentStatus
+from app.models.enums import DocType, DocumentStatus, FactStatus, Metric, PeriodType
 
 
 class DocumentOut(BaseModel):
@@ -44,6 +44,7 @@ class TableOut(BaseModel):
     table_title: str | None
     bbox: list[float] | None
     rows_json: list[list[str]]
+    cell_bboxes: list[list[list[float] | None]] | None = None
 
 
 class PageOut(BaseModel):
@@ -61,6 +62,29 @@ class PageOut(BaseModel):
     image_url: str | None
     chunks: list[ChunkOut]
     tables: list[TableOut]
+
+
+class FactOut(BaseModel):
+    """One number pulled from a table, with where it came from (document, page, cell box)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    metric: Metric
+    subsidiary: str | None
+    state: str | None
+    period_type: PeriodType | None
+    period: str | None
+    category: str | None
+    value_raw: str
+    value: float
+    unit: str | None  # None: the table did not say; value_std assumes the standard unit
+    value_std: float | None
+    status: FactStatus
+    confidence: float
+    page_no: int
+    bbox: list[float] | None
+    table_id: uuid.UUID | None
 
 
 class UploadResult(BaseModel):

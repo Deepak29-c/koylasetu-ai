@@ -8,6 +8,8 @@ No database code here, so every parser can be unit-tested on its own. Coordinate
 
 from __future__ import annotations
 
+import re
+from collections import Counter
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -15,6 +17,7 @@ from pathlib import Path
 import pymupdf
 from PIL import Image, ImageSequence
 
+from app.services.normalise import OTHER, find_unit
 from worker.ocr import OcrResult
 
 BBox = list[float]  # [x0, y0, x1, y1]
@@ -35,6 +38,7 @@ class Table:
     rows: list[list[str]]
     bbox: BBox | None = None
     title: str | None = None
+    cell_bboxes: list[list[BBox | None]] | None = None  # same shape as rows
 
 
 @dataclass
@@ -77,23 +81,58 @@ def parse(path: Path, mime: str, ocr: OcrFn) -> Iterator[PageResult]:
 
 def parse_pdf(path: Path, ocr: OcrFn) -> Iterator[PageResult]:
     with pymupdf.open(path) as doc:
+        running = _running_header_lines(doc)
         for index, page in enumerate(doc):
             if len(page.get_text("text").strip()) < SCANNED_TEXT_CHARS:
                 yield _ocr_pdf_page(page, index + 1, ocr)
             else:
-                yield _digital_pdf_page(page, index + 1)
+                yield _digital_pdf_page(page, index + 1, running)
 
 
-def _digital_pdf_page(page: pymupdf.Page, page_no: int) -> PageResult:
+HEADER_BAND = 0.1  # top share of the page where running headers live
+
+
+def _line_key(line: str) -> str:
+    return " ".join(re.sub(r"[^a-z]+", " ", line.lower()).split())
+
+
+def _running_header_lines(doc: pymupdf.Document) -> set[str]:
+    """Lines repeated at the top of two or more pages ("Annual Report 2024-25 / Ministry of
+    Coal"). Digits are ignored, so page numbers and years do not make lines look different."""
+    seen: Counter[str] = Counter()
+    for page in doc:
+        band = page.rect.height * HEADER_BAND
+        keys = {
+            _line_key(line)
+            for *box, text, _no, kind in page.get_text("blocks")
+            if kind == 0 and box[3] <= band
+            for line in text.splitlines()
+        }
+        seen.update(k for k in keys if k)
+    return {k for k, n in seen.items() if n >= 2}
+
+
+def _digital_pdf_page(
+    page: pymupdf.Page, page_no: int, running_headers: set[str] | frozenset[str] = frozenset()
+) -> PageResult:
     blocks = [
         Block(text.strip(), [round(v, 2) for v in (x0, y0, x1, y1)])
         for x0, y0, x1, y1, text, _no, kind in page.get_text("blocks", sort=True)
         if kind == 0 and text.strip()  # kind 0 = text, 1 = image
     ]
-    return PageResult(page_no, has_text_layer=True, blocks=blocks, tables=_pdf_tables(page))
+    titles = [b for b in blocks if not _is_running_header(b, running_headers)]
+    tables = _pdf_tables(page, titles)
+    return PageResult(page_no, has_text_layer=True, blocks=blocks, tables=tables)
 
 
-def _pdf_tables(page: pymupdf.Page) -> list[Table]:
+TITLE_BAND = 60  # PDF points above a table searched for its title / unit note
+
+
+def _round_box(box) -> BBox | None:
+    return [round(v, 2) for v in box] if box else None
+
+
+def _pdf_tables(page: pymupdf.Page, blocks: list[Block]) -> list[Table]:
     try:
         found = page.find_tables()
     except Exception:  # table detection is best effort; never fail the page because of it
@@ -102,8 +141,35 @@ def _pdf_tables(page: pymupdf.Page) -> list[Table]:
     for t in found.tables:
         rows = [[_cell(c) for c in row] for row in t.extract()]
         if len(rows) >= 2 and any(any(c for c in row) for row in rows):
-            tables.append(Table(rows, [round(v, 2) for v in t.bbox]))
+            boxes = [[_round_box(c) for c in row.cells] for row in t.rows]
+            box = _round_box(t.bbox)
+            tables.append(Table(rows, box, _title_above(box, blocks), boxes))
     return tables
+
+
+def _is_running_header(block: Block, running: set[str] | frozenset[str]) -> bool:
+    """A repeated page header, unless it states a unit ("Fig. in MT"): that is kept."""
+    keys = [k for k in map(_line_key, block.text.splitlines()) if k]
+    if not keys or not all(k in running for k in keys):
+        return False
+    unit = find_unit(block.text)
+    return unit is None or unit.kind == OTHER
+
+
+def _title_above(box: BBox, blocks: list[Block]) -> str | None:
+    """Text just above a table: its title and often its unit, e.g. "Coal Production (MT)"."""
+    x0, top, x1, _ = box
+    parts = [
+        b.text
+        for b in blocks
+        if b.bbox
+        and top - TITLE_BAND <= b.bbox[1]
+        and b.bbox[3] <= top + 2
+        and b.bbox[0] < x1
+        and b.bbox[2] > x0
+        and any(ch.isalpha() for ch in b.text)
+    ]
+    return " ".join(" ".join(parts).split())[:500] or None
 
 
 def _ocr_pdf_page(page: pymupdf.Page, page_no: int, ocr: OcrFn) -> PageResult:

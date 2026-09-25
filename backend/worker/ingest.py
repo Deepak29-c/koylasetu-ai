@@ -1,9 +1,9 @@
-"""W1 ingestion job (guide section 7.1): detect, OCR, layout, tables, chunks, embeddings.
+"""W1 ingestion job (guide section 7.1): detect, OCR, layout, tables, facts, chunks, embeddings.
 
 Run the worker with:  rq worker ingest topics reports
 
-Status: UPLOADED -> PROCESSING -> PROCESSED | FAILED. Facts extraction and validation
-(steps 10-11, NEEDS_REVIEW) are added in build step 3.
+Status: UPLOADED -> PROCESSING -> PROCESSED | FAILED. Validation (step 11, NEEDS_REVIEW) is
+added with the validation rules.
 """
 
 import logging
@@ -13,10 +13,11 @@ from pathlib import Path
 from sqlalchemy import delete
 
 from app.core.db import SessionLocal
-from app.models import Chunk, Document, ExtractedTable, Page
+from app.models import Chunk, Document, ExtractedTable, Fact, Page
 from app.models.enums import DocumentStatus
 from worker import parse
 from worker.embed import chunk_blocks, embed_document
+from worker.extract import extract_table, llm_classifier
 from worker.ocr import get_ocr
 
 log = logging.getLogger(__name__)
@@ -48,13 +49,14 @@ def run_pipeline(db, doc: Document) -> None:
         raise FileNotFoundError(f"original file missing: {path}")
 
     # Retry-safe: remove results of any earlier run of this document.
-    for model in (Chunk, ExtractedTable, Page):
+    for model in (Fact, Chunk, ExtractedTable, Page):
         db.execute(delete(model).where(model.document_id == doc.id))
     doc.page_count = parse.page_count(path, doc.mime_type)
     db.commit()
 
     ocr = get_ocr(doc.language)
-    total_chunks = 0
+    classify = llm_classifier()
+    total_chunks = total_facts = 0
     for result in parse.parse(path, doc.mime_type, ocr):
         db.add(
             Page(
@@ -66,15 +68,17 @@ def run_pipeline(db, doc: Document) -> None:
             )
         )
         for table in result.tables:
-            db.add(
-                ExtractedTable(
-                    document_id=doc.id,
-                    page_no=result.page_no,
-                    bbox=table.bbox,
-                    rows_json=table.rows,
-                    table_title=table.title,
-                )
+            saved = ExtractedTable(
+                document_id=doc.id,
+                page_no=result.page_no,
+                bbox=table.bbox,
+                rows_json=table.rows,
+                cell_bboxes=table.cell_bboxes,
+                table_title=table.title,
             )
+            db.add(saved)
+            db.flush()  # facts point at the table's id
+            total_facts += extract_table(db, doc.id, saved, result.ocr_confidence, classify)
         for draft in chunk_blocks(result.blocks):
             db.add(
                 Chunk(document_id=doc.id, page_no=result.page_no, text=draft.text, bbox=draft.bbox)
@@ -83,6 +87,7 @@ def run_pipeline(db, doc: Document) -> None:
         doc.pages_done = result.page_no
         db.commit()  # one commit per page, so the Documents screen shows live progress
 
+    log.info("Document %s: %d facts from tables", doc.id, total_facts)
     embedded = embed_document(db, doc.id)
     if not embedded:
         log.info("Document %s: %d chunks saved without embeddings", doc.id, total_chunks)
