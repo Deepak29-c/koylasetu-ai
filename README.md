@@ -6,6 +6,7 @@ Verified AI Reporting & Parliamentary-Reply Assistant for CMPDI / CIL (SIH 2026,
 The full technical spec is [docs/KoylaSetu_AI_Developer_Guide.docx](docs/KoylaSetu_AI_Developer_Guide.docx).
 
 **New to the project? Start with [docs/SETUP.md](docs/SETUP.md)** for prerequisites, first-time setup and common problems.
+**Picking up existing work? Read [docs/KNOWLEDGE_TRANSFER.md](docs/KNOWLEDGE_TRANSFER.md)** for what's actually built vs. stubbed, the data model, the non-Docker setup gotchas, and where to pick up next.
 
 ## What's in the repo
 

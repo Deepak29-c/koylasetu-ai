@@ -139,6 +139,31 @@ export type UserUpdateIn = {
   is_active?: boolean;
 };
 
+export type ReportType = "pq_reply" | "monthly" | "briefing";
+export type ReportStatus = "DRAFT" | "IN_REVIEW" | "RETURNED" | "APPROVED" | "EXPORTED";
+
+export type ReportRow = {
+  id: string;
+  report_type: ReportType;
+  title: string;
+  status: ReportStatus;
+  content_json: { text?: string };
+  org_unit_id: string;
+  created_by: string;
+  approver_id: string | null;
+  due_date: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ReportVersionRow = {
+  version: number;
+  content_json: { text?: string };
+  editor: { id: string; name: string; email: string };
+  change_note: string | null;
+  created_at: string;
+};
+
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -247,6 +272,63 @@ export function updateUser(id: string, body: UserUpdateIn): Promise<UserRow> {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
+  });
+}
+
+export function listReports(filters: { status?: string; report_type?: string } = {}): Promise<ReportRow[]> {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value) params.set(key, value);
+  }
+  const qs = params.toString();
+  return api<ReportRow[]>(`/reports${qs ? `?${qs}` : ""}`);
+}
+
+export function createReport(body: {
+  report_type: ReportType;
+  title: string;
+  content_json?: { text?: string };
+  due_date?: string | null;
+}): Promise<ReportRow> {
+  return api<ReportRow>("/reports", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export function getReport(id: string): Promise<ReportRow> {
+  return api<ReportRow>(`/reports/${id}`);
+}
+
+export function listReportVersions(id: string): Promise<ReportVersionRow[]> {
+  return api<ReportVersionRow[]>(`/reports/${id}/versions`);
+}
+
+export function updateReport(
+  id: string,
+  body: { title?: string; content_json?: { text?: string }; due_date?: string | null; change_note?: string },
+): Promise<ReportRow> {
+  return api<ReportRow>(`/reports/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export function submitReport(id: string): Promise<ReportRow> {
+  return api<ReportRow>(`/reports/${id}/submit`, { method: "POST" });
+}
+
+export function approveReport(id: string): Promise<ReportRow> {
+  return api<ReportRow>(`/reports/${id}/approve`, { method: "POST" });
+}
+
+export function rejectReport(id: string, comment: string): Promise<ReportRow> {
+  return api<ReportRow>(`/reports/${id}/reject`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ comment }),
   });
 }
 

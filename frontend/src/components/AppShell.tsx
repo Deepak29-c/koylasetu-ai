@@ -30,6 +30,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     });
   }, [router]);
 
+  const canSeeReports =
+    me?.permissions.includes("edit_reports") ||
+    me?.permissions.includes("approve_reports") ||
+    me?.permissions.includes("export_reports");
+
   const nav = [
     { href: "/", label: t("home") },
     { href: "/ask", label: t("ask") },
@@ -37,6 +42,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     { href: "/documents", label: t("documents") },
     ...(me?.permissions.includes("view_audit") ? [{ href: "/audit", label: t("auditLog") }] : []),
     ...(me?.permissions.includes("manage_admin") ? [{ href: "/admin/users", label: t("users") }] : []),
+    ...(canSeeReports ? [{ href: "/reports", label: t("reports") }] : []),
   ];
 
   return (
