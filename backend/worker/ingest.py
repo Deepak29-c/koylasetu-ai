@@ -2,8 +2,8 @@
 
 Run the worker with:  rq worker ingest topics reports
 
-Status: UPLOADED -> PROCESSING -> PROCESSED | FAILED. Validation (step 11, NEEDS_REVIEW) is
-added with the validation rules.
+Status: UPLOADED -> PROCESSING -> PROCESSED | NEEDS_REVIEW | FAILED. NEEDS_REVIEW means the
+validation rules (worker/validate.py) flagged some facts for the Reviewer.
 """
 
 import logging
@@ -20,6 +20,7 @@ from worker import parse
 from worker.embed import embed_document, page_chunks
 from worker.extract import extract_table, llm_classifier
 from worker.ocr import get_ocr
+from worker.validate import validate_document
 
 log = logging.getLogger(__name__)
 
@@ -49,7 +50,8 @@ def run_pipeline(db, doc: Document) -> None:
     if not path.exists():
         raise FileNotFoundError(f"original file missing: {path}")
 
-    # Retry-safe: remove results of any earlier run of this document.
+    # Retry-safe: remove results of any earlier run of this document. (The API refuses a
+    # re-run once a reviewer has acted on its facts, so no human decision is lost here.)
     for model in (Fact, Chunk, ExtractedTable, Page):
         db.execute(delete(model).where(model.document_id == doc.id))
     doc.page_count = parse.page_count(path, doc.mime_type)
@@ -89,10 +91,12 @@ def run_pipeline(db, doc: Document) -> None:
         db.commit()  # one commit per page, so the Documents screen shows live progress
 
     log.info("Document %s: %d facts from tables", doc.id, total_facts)
+    open_issues = validate_document(db, doc.id)
+    db.commit()
     embedded = embed_document(db, doc.id)
     if not embedded:
         log.info("Document %s: %d chunks saved without embeddings", doc.id, total_chunks)
-    doc.status = DocumentStatus.PROCESSED
+    doc.status = DocumentStatus.NEEDS_REVIEW if open_issues else DocumentStatus.PROCESSED
     db.commit()
     if doc.doc_type == DocType.PQ_ANSWER:
         enqueue_topics_refresh()  # adds the question to parliament_questions (guide 11)

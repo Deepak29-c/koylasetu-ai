@@ -52,6 +52,19 @@ Built so far:
   edited in the plain-text editor is exported from its text without repeating the header or
   sources. Nothing is sent anywhere
 
+**Step 3a: validation and review queue** (guide 8, W2), on the facts from "Tables → facts" below:
+- Rules V01-V08 in `worker/validate.py` (subsidiaries add up to CIL, CIL + SCCL + Captive and
+  states add up to India, conflicts with other documents, impossible values, unit not stated or
+  not convertible, confidence < 0.85, ±50 % year-on-year, duplicates, unknown period). They run
+  after extraction in the ingest job and in `python -m worker.extract <id>`
+- Facts with no issue are accepted automatically (VERIFIED); the rest are FLAGGED for the
+  Reviewer. Document status NEEDS_REVIEW while any fact is flagged
+- Review screen: source page with the cell highlighted, the value, why it was flagged, the
+  other source's value; Accept / Correct / Reject (comment required for the last two), all
+  logged in review_actions + audit_log. A reviewed document can no longer be re-processed
+  (API retry and the rebuild command both refuse)
+- `/review/summary` gives the automation % (facts accepted automatically ÷ all facts)
+
 **Step 2: Q&A with citations** (guide section 9, text route), Ask screen + document viewer:
 - Hybrid search: Postgres full-text + pgvector (BGE-M3), merged with reciprocal rank fusion,
   always filtered to the user's org unit; top 6 passages
@@ -155,7 +168,7 @@ numbers need the local models pulled and the source documents loaded.
 - Local model server (Ollama) without Docker: install notes per OS and `scripts/check_llm.py`,
   which checks the local-only guard, both models, a 1024-number embedding and a test answer
 
-Not built yet: validation rules + review queue + NUMERIC route (rest of step 3), reports,
+Not built yet: NUMERIC route (step 3b, PR #36),
 and the Metrics screen that shows the benchmark results. Tables on scanned pages are not detected yet (OCR gives text only).
 PaddleOCR (`OCR_ENGINE=paddle`) currently falls back to Tesseract.
 
