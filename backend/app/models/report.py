@@ -112,6 +112,8 @@ class QaLog(Entity):
 
 
 class Topic(Entity):
+    """One topic of one topic-model run (guide 11). The API shows the latest run."""
+
     __tablename__ = "topics"
 
     run_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)
@@ -119,7 +121,10 @@ class Topic(Entity):
     label: Mapped[str] = mapped_column(String(300))
     keywords: Mapped[list] = mapped_column(JSONB)
     size: Mapped[int] = mapped_column(Integer)
+    # {"year": {"2021": 4}, "session": {"2021-budget": 3}, "undated": 0}
     period_counts_json: Mapped[dict | None] = mapped_column(JSONB)
+    # [{"question_id": "...", "weight": 0.41, "keywords": ["coking", ...]}], strongest first
+    members_json: Mapped[list | None] = mapped_column(JSONB)
 
 
 class AuditLog(Entity):
