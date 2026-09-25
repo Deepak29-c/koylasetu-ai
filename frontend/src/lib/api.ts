@@ -296,8 +296,16 @@ async function refreshTokens(): Promise<boolean> {
  * first `/me` knew what a 401 meant, so everywhere else showed a dead red box with no way
  * back (#45).
  */
+let leavingForLogin = false;
+
 function toLoginAgain(): void {
   if (typeof window === "undefined") return;
+  // Several requests can 401 at once (React re-invokes effects in development, and a
+  // page often loads two things). Without this guard the first call clears the token
+  // and navigates to /login?next=…, then the second sees no token, decides nobody was
+  // signed in, and navigates to a bare /login — aborting the first and losing `next`.
+  if (leavingForLogin) return;
+  leavingForLogin = true;
   const { pathname, search } = window.location;
   // Someone who never had a token is not resuming a session, they are just arriving.
   // Only that case gets `next`, which is what makes the login page say "session ended".
