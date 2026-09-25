@@ -109,6 +109,36 @@ export function listAuditActions(): Promise<string[]> {
   return api<string[]>("/audit/actions");
 }
 
+export type Role = "admin" | "operator" | "reviewer" | "analyst" | "approver" | "viewer";
+export const ALL_ROLES: Role[] = ["admin", "operator", "reviewer", "analyst", "approver", "viewer"];
+
+export type OrgUnitOut = { id: string; code: string; name: string; type: string };
+
+export type UserRow = {
+  id: string;
+  name: string;
+  email: string;
+  roles: string[];
+  org_unit: OrgUnitOut;
+  is_active: boolean;
+  created_at: string;
+};
+
+export type UserCreateIn = {
+  name: string;
+  email: string;
+  password: string;
+  roles: string[];
+  org_unit_id: string;
+};
+
+export type UserUpdateIn = {
+  name?: string;
+  roles?: string[];
+  org_unit_id?: string;
+  is_active?: boolean;
+};
+
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -194,6 +224,30 @@ export async function fetchImageUrl(path: string, retry = true): Promise<string>
   if (res.status === 401 && retry && (await refreshTokens())) return fetchImageUrl(path, false);
   if (!res.ok) throw new ApiError(res.status, await errorMessage(res));
   return URL.createObjectURL(await res.blob());
+}
+
+export function listOrgUnits(): Promise<OrgUnitOut[]> {
+  return api<OrgUnitOut[]>("/org-units");
+}
+
+export function listUsers(): Promise<UserRow[]> {
+  return api<UserRow[]>("/users");
+}
+
+export function createUser(body: UserCreateIn): Promise<UserRow> {
+  return api<UserRow>("/users", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export function updateUser(id: string, body: UserUpdateIn): Promise<UserRow> {
+  return api<UserRow>(`/users/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
 }
 
 export async function login(email: string, password: string): Promise<void> {
