@@ -81,6 +81,23 @@ def chat(
     return data.get("message", {}).get("content", "").strip()
 
 
+def normalise_model(name: str) -> str:
+    """Ollama stores `bge-m3` as `bge-m3:latest`; compare names in that full form."""
+    name = name.strip()
+    return name if ":" in name else f"{name}:latest"
+
+
+def pulled_models(tags: dict) -> set[str]:
+    """Model names from Ollama's GET /api/tags reply."""
+    return {normalise_model(m.get("name") or m.get("model", "")) for m in tags.get("models", [])}
+
+
+def missing_models(required: list[str], tags: dict) -> list[str]:
+    """The required models that are not in the /api/tags reply, in the order given."""
+    have = pulled_models(tags)
+    return [m for m in required if normalise_model(m) not in have]
+
+
 def ensure_available(timeout: float = 5) -> None:
     """Raise LlmUnavailable unless the model server answers and has the chat model. Used before
     long jobs (a PQ draft) so they fail at once instead of producing an empty result. Servers

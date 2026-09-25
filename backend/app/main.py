@@ -1,7 +1,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app import __version__
 from app.api import (
+    admin,
     audit,
     auth,
     dashboard,
@@ -21,7 +23,7 @@ from app.core.config import get_settings
 app = FastAPI(
     title="KoylaSetu AI",
     description="Verified AI reporting & parliamentary-reply assistant for CMPDI / CIL",
-    version="0.1.0",
+    version=__version__,
 )
 
 # First, so it ends up inside CORSMiddleware: an unhandled 500 still gets CORS headers and
@@ -52,6 +54,7 @@ app.include_router(pq_replies.export_router)
 app.include_router(topics.router)
 app.include_router(dashboard.router)
 app.include_router(metrics.router)
+app.include_router(admin.router)
 
 
 @app.get("/health", tags=["system"])
