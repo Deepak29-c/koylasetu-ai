@@ -16,7 +16,7 @@ from __future__ import annotations
 import logging
 import uuid
 from collections import defaultdict
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -253,17 +253,84 @@ def v08_period(facts: Sequence[FactLike]) -> list[Issue]:
     ]
 
 
+@dataclass(frozen=True)
+class Threshold:
+    key: str  # tolerance_pct, max_subsidiary_mt, min_confidence, yoy_limit_pct, yoy_min_mt
+    value: float
+    unit: str  # "%", "MT" or "" (a plain number)
+
+
+@dataclass(frozen=True)
+class Rule:
+    """One rule as data, for the admin Rules screen. `validate` runs exactly this list."""
+
+    code: str
+    name: str
+    checks: str
+    severities: tuple[Severity, ...]  # every severity the rule can give
+    thresholds: tuple[Threshold, ...]
+    run: Callable[[Sequence[FactLike], list[Other]], list[Issue]]
+    uses_other_documents: bool = False
+
+
+_TOLERANCE = Threshold("tolerance_pct", TOLERANCE * 100, "%")
+
+RULES: tuple[Rule, ...] = (
+    Rule(
+        "V01", "Totals add up",
+        "Sum of subsidiaries = CIL total; CIL + SCCL + Captive = All India; states = All India, "
+        "for the same metric and period.",
+        (Severity.HIGH,), (_TOLERANCE,), lambda facts, _: v01_totals(facts),
+    ),
+    Rule(
+        "V02", "Same figure in another document",
+        "The same figure (metric, company, period) in another document differs.",
+        (Severity.HIGH,), (_TOLERANCE,), v02_conflicts, uses_other_documents=True,
+    ),
+    Rule(
+        "V03", "Impossible value",
+        "Value is negative, or a single company's yearly output is more than any company "
+        "produces.",
+        (Severity.HIGH,), (Threshold("max_subsidiary_mt", MAX_SUBSIDIARY_MT, "MT"),),
+        lambda facts, _: v03_impossible(facts),
+    ),
+    Rule(
+        "V04", "Unit missing or unknown",
+        "The table does not state the unit, or the unit cannot be converted to the metric's "
+        "standard unit.",
+        (Severity.MEDIUM,), (), lambda facts, _: v04_unit(facts),
+    ),
+    Rule(
+        "V05", "Low extraction confidence",
+        "The figure was read with low confidence (OCR, header mapping or a guessed unit).",
+        (Severity.MEDIUM,), (Threshold("min_confidence", REVIEW_THRESHOLD, ""),),
+        lambda facts, _: v05_confidence(facts),
+    ),
+    Rule(
+        "V06", "Large year-on-year change",
+        "Change from the same period a year earlier is larger than the limit (possible typo); "
+        "very small figures are skipped.",
+        (Severity.LOW,),
+        (Threshold("yoy_limit_pct", YOY_LIMIT * 100, "%"),
+         Threshold("yoy_min_mt", YOY_MIN_MT, "MT")),
+        v06_year_on_year, uses_other_documents=True,
+    ),
+    Rule(
+        "V07", "Duplicate in the same document",
+        "The same figure appears twice in one document: low when both values agree, high when "
+        "they differ.",
+        (Severity.LOW, Severity.HIGH), (_TOLERANCE,), lambda facts, _: v07_duplicates(facts),
+    ),
+    Rule(
+        "V08", "Period not identified",
+        "The period (financial year, month) could not be read from the table.",
+        (Severity.MEDIUM,), (), lambda facts, _: v08_period(facts),
+    ),
+)  # fmt: skip
+
+
 def validate(facts: Sequence[FactLike], others: list[Other]) -> list[Issue]:
-    return [
-        *v01_totals(facts),
-        *v02_conflicts(facts, others),
-        *v03_impossible(facts),
-        *v04_unit(facts),
-        *v05_confidence(facts),
-        *v06_year_on_year(facts, others),
-        *v07_duplicates(facts),
-        *v08_period(facts),
-    ]
+    return [issue for rule in RULES for issue in rule.run(facts, others)]
 
 
 def validate_document(db: Session, doc_id: uuid.UUID) -> int:

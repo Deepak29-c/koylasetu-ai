@@ -46,6 +46,12 @@ export const USER_ACTIVE: Record<"active" | "inactive", { tone: Tone; label: Lab
   inactive: { tone: "neutral", label: "inactive" },
 };
 
+export const HEALTH: Record<"ok" | "warn" | "error", { tone: Tone; label: LabelKey }> = {
+  ok: { tone: "success", label: "adminStatus.ok" },
+  warn: { tone: "warning", label: "adminStatus.warn" },
+  error: { tone: "danger", label: "adminStatus.error" },
+};
+
 export const STATUS_MAPS = {
   document: DOCUMENT_STATUS,
   report: REPORT_STATUS,
@@ -53,6 +59,7 @@ export const STATUS_MAPS = {
   confidence: CONFIDENCE,
   upload: UPLOAD_RESULT,
   user: USER_ACTIVE,
+  health: HEALTH,
 } as const;
 
 export type StatusKind = keyof typeof STATUS_MAPS;

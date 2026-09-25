@@ -40,6 +40,9 @@ MINISTRY = "MINISTRY OF COAL"
 MINISTER_LINE = "THE MINISTER OF COAL AND MINES (SHRI ____________________)"  # filled by hand
 DEFAULT_INTRO = "Will the Minister of COAL be pleased to state:"
 SOURCES_HEADING = "SOURCES (internal, remove before sending)"
+ANSWER_HEADING = "ANSWER"
+STATEMENT_HEADING = "STATEMENT"  # starred questions: the answers are laid as a Statement
+ANNEXURE_PREFIX = "Annexure"  # Annexure-I, Annexure-II…
 DRAFT_LINE = "DRAFT - for internal review. Not approved; not to be sent."
 ANNEXURE_ROWS = 6  # tables with more rows than this go to an Annexure (guide 10.2)
 MAX_PARTS = 10  # each part is one model call; a PQ rarely has more than (a)-(f)
@@ -409,7 +412,7 @@ def build_block(
             "rows": [[mapping.get(c, c) for c in row] for row in table.get("rows", [])],
         }
         if len(table["rows"]) > ANNEXURE_ROWS:
-            annexure = f"Annexure-{roman(annexure_no)}"
+            annexure = f"{ANNEXURE_PREFIX}-{roman(annexure_no)}"
             text = re.sub(r"in the table below", f"in {annexure}", text, flags=re.I)
             if annexure not in text:
                 text = f"{text} Details are given in {annexure}.".strip()
@@ -603,14 +606,14 @@ def layout(
     for b in blocks:
         line(f"{part_prefix(b['part'])}{b['question']}")
     line()
-    line("ANSWER", "title")
+    line(ANSWER_HEADING, "title")
     line(header["minister_line"], "title")
     line()
     st = statement(header, blocks)
     if st:
         line(st[0])
         line()
-        line("STATEMENT", "title")
+        line(STATEMENT_HEADING, "title")
         line(st[1], "caption")
         line()
     for b in blocks:

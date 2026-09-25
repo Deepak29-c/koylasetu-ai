@@ -27,29 +27,15 @@ from urllib.parse import urlparse
 BACKEND = Path(__file__).resolve().parent.parent / "backend"
 sys.path.insert(0, str(BACKEND))
 
+# The same model-name comparison as the admin System status screen.
+from app.llm.client import missing_models, normalise_model, pulled_models  # noqa: E402, F401
+
 # Hosts that are docker-compose service names: pull through the container, not the host.
 DOCKER_HOSTS = {"ollama", "host.docker.internal"}
 
 CHAT_SYSTEM = "You are a test. Reply with one short sentence."
 CHAT_USER = "Say hello and name the capital of India."
 EMBED_TEXT = "Coal production of NCL in FY 2023-24 was 136.15 MT."
-
-
-def normalise_model(name: str) -> str:
-    """Ollama stores `bge-m3` as `bge-m3:latest`; compare names in that full form."""
-    name = name.strip()
-    return name if ":" in name else f"{name}:latest"
-
-
-def pulled_models(tags: dict) -> set[str]:
-    """Model names from Ollama's GET /api/tags reply."""
-    return {normalise_model(m.get("name") or m.get("model", "")) for m in tags.get("models", [])}
-
-
-def missing_models(required: list[str], tags: dict) -> list[str]:
-    """The required models that are not in the /api/tags reply, in the order given."""
-    have = pulled_models(tags)
-    return [m for m in required if normalise_model(m) not in have]
 
 
 def pull_command(model: str, base_url: str) -> str:
