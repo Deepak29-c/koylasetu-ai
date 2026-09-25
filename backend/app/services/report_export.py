@@ -1,4 +1,5 @@
-"""DOCX and PDF export of a report in the official PQ-reply layout (guide 10.1).
+"""DOCX and PDF export of a report: the official PQ-reply layout, the monthly report and the
+briefing note (guide 10.1).
 
 The layout itself (Ministry header, house, Starred/Unstarred Question No., date, subject, MP
 and the parts, ANSWER, Minister line placeholder, Statement for starred questions, answers,
@@ -14,19 +15,26 @@ Two sources of content: a generated reply (blocks in content_json), or a reply e
 plain-text editor, which saves only {text}. That text is already the full reply (render_text
 output, edited), so it is drawn as it is; the header and sources are only added when the text
 does not have them.
+
+Monthly reports and briefing notes (report_builder.layout) use the same items plus
+("chart", {...}): a bar chart drawn with PyMuPDF into a PNG, inserted as a picture in the DOCX
+and as an image in the PDF. PyMuPDF is already a dependency, so no Matplotlib (≈40 MB with its
+font cache) is needed for these simple grouped bar charts.
 """
 
 from __future__ import annotations
 
 import html
 import io
+import math
 import re
 
 import pymupdf
 from docx import Document as DocxDocument
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.shared import Pt, RGBColor
+from docx.shared import Inches, Pt, RGBColor
 
+from app.services import report_builder
 from app.services.pq_reply import (
     DRAFT_LINE,
     SOURCES_HEADING,
@@ -104,9 +112,19 @@ def items_from_text(
     return items
 
 
+DRAFT_KINDS = ("monthly", "briefing")
+
+
 def items_for_report(report, pq_header: dict | None, db_sources: list[dict]) -> list[tuple]:
     content = report.content_json or {}
     approved = is_approved(report)
+    kind = getattr(getattr(report, "report_type", None), "value", None) or content.get("kind")
+    if content.get("kind") in DRAFT_KINDS or kind in DRAFT_KINDS:
+        if content.get("sections") and content.get("title"):
+            return report_builder.layout(content, internal_notes=not approved)
+        return report_builder.items_from_text(
+            content.get("text", ""), sources=db_sources, title=report.title, approved=approved
+        )
     blocks = content.get("blocks") or []
     header = content.get("header") or pq_header
     if blocks and header:
@@ -164,6 +182,72 @@ def _docx_table(doc, table: dict) -> None:
     doc.add_paragraph()
 
 
+# --- charts -------------------------------------------------------------------------------------
+
+# Categorical slots 1-3 of the dataviz reference palette (blue, orange, aqua), checked for
+# colour-blind separation; the legend names every series, and the table above the chart
+# holds the same figures, so colour never carries meaning alone.
+_SERIES_RGB = [(0x2A, 0x78, 0xD6), (0xEB, 0x68, 0x34), (0x1B, 0xAF, 0x7A), (0xED, 0xA1, 0x00)]
+_INK = (0x52 / 255, 0x51 / 255, 0x4E / 255)
+_GRID = (0.88, 0.88, 0.86)
+
+
+def axis_ticks(value: float) -> list[float]:
+    """0 up to at least `value` in 3-5 even steps of 1, 2 or 5 x 10^n (0, 5, 10, 15, 20, 25)."""
+    if value <= 0:
+        return [0.0, 1.0]
+    exp = 10 ** math.floor(math.log10(value))
+    step = next(m * e for e in (exp / 10, exp) for m in (1, 2, 5) if value / (m * e) <= 5)
+    n = math.ceil(value / step - 1e-9)
+    return [round(i * step, 10) for i in range(n + 1)]
+
+
+def chart_png(chart: dict, width: float = 480, height: float = 230, dpi: int = 150) -> bytes:
+    """A grouped bar chart as PNG: one group per label, one bar per series, a light grid and
+    a legend. Missing values ("–") are simply left out, never drawn as zero."""
+    doc = pymupdf.open()
+    page = doc.new_page(width=width, height=height)
+    left, right, top, bottom = 44, width - 10, 30, height - 34
+    labels, series = chart["labels"], chart["series"][: len(_SERIES_RGB)]
+    values = [v for s in series for v in s["values"] if v is not None]
+    ticks = axis_ticks(max(values, default=0))
+    top_value = ticks[-1]
+    title = re.sub(r"^\d+\.\s*", "", chart.get("title", "")).capitalize()
+    page.insert_text((left, 14), f"{title} ({chart.get('unit', '')})"[:90],
+                     fontsize=9, color=(0.04, 0.04, 0.04))  # fmt: skip
+    for tick in ticks:  # grid + y labels
+        y = bottom - (bottom - top) * tick / top_value
+        page.draw_line((left, y), (right, y), color=_GRID, width=0.5)
+        label = f"{tick:g}"
+        page.insert_text((left - 6 - 4.2 * len(label), y + 3), label, fontsize=7, color=_INK)
+    group = (right - left) / max(len(labels), 1)
+    bar = min(18.0, (group * 0.75) / max(len(series), 1))
+    for gi, label in enumerate(labels):
+        x0 = left + gi * group + (group - bar * len(series)) / 2
+        for si, s in enumerate(series):
+            v = s["values"][gi] if gi < len(s["values"]) else None
+            if v is None:
+                continue
+            h = (bottom - top) * max(v, 0) / top_value
+            rect = pymupdf.Rect(x0 + si * bar + 1, bottom - h, x0 + (si + 1) * bar - 1, bottom)
+            color = tuple(c / 255 for c in _SERIES_RGB[si])
+            page.draw_rect(rect, color=None, fill=color, width=0)
+        text = label.split("/")[0]  # "Captive/Others" -> "Captive"
+        text = text if len(text) <= 9 else text[:8] + "."
+        page.insert_text((left + gi * group + group / 2 - 2.1 * len(text), bottom + 10), text,
+                         fontsize=7, color=_INK)  # fmt: skip
+    page.draw_line((left, bottom), (right, bottom), color=_INK, width=0.6)
+    x = left
+    for si, s in enumerate(series):  # legend
+        color = tuple(c / 255 for c in _SERIES_RGB[si])
+        page.draw_rect(pymupdf.Rect(x, height - 14, x + 8, height - 6), color=None, fill=color)
+        page.insert_text((x + 11, height - 7), s["name"], fontsize=7.5, color=_INK)
+        x += 18 + 4.4 * len(s["name"])
+    png = page.get_pixmap(dpi=dpi).tobytes("png")
+    doc.close()
+    return png
+
+
 def to_docx(items: list[tuple]) -> bytes:
     doc = DocxDocument()
     doc.styles["Normal"].font.name = "Arial"
@@ -173,6 +257,8 @@ def to_docx(items: list[tuple]) -> bytes:
             _para(doc, item[1], item[2])
         elif item[0] == "table":
             _docx_table(doc, item[1])
+        elif item[0] == "chart":
+            doc.add_picture(io.BytesIO(chart_png(item[1])), width=Inches(6))
         else:
             doc.add_page_break()
     buf = io.BytesIO()
@@ -205,9 +291,10 @@ def _html_table(table: dict) -> str:
     return f"<table><tr>{head}</tr>{body}</table>"
 
 
-def to_html(items: list[tuple]) -> str:
+def to_html(items: list[tuple], archive: pymupdf.Archive | None = None) -> str:
+    """HTML for the PDF Story; chart PNGs are added to `archive` and referenced by name."""
     out: list[str] = []
-    for item in items:
+    for n, item in enumerate(items):
         if item[0] == "line":
             text, style = item[1], item[2]
             body = html.escape(text)
@@ -216,13 +303,19 @@ def to_html(items: list[tuple]) -> str:
             out.append(f'<p class="{style}">{body or "&#160;"}</p>')
         elif item[0] == "table":
             out.append(_html_table(item[1]))
+        elif item[0] == "chart":
+            if archive is not None:
+                name = f"chart{n}.png"
+                archive.add((chart_png(item[1]), name))
+                out.append(f'<p><img src="{name}" width="440"/></p>')
         else:
             out.append("<br/>")
     return "<body>" + "".join(out) + "</body>"
 
 
 def to_pdf(items: list[tuple]) -> bytes:
-    story = pymupdf.Story(html=to_html(items), user_css=_CSS)
+    archive = pymupdf.Archive()
+    story = pymupdf.Story(html=to_html(items, archive), user_css=_CSS, archive=archive)
     buf = io.BytesIO()
     writer = pymupdf.DocumentWriter(buf)
     page = pymupdf.paper_rect("a4")

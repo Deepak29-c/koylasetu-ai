@@ -226,6 +226,23 @@ const en = {
   "split.markers": "the (a), (b)… markers",
   "split.llm": "the local model (no markers in the question)",
   "split.single": "none: answered as one question",
+  // Monthly report and briefing note drafts (guide 10.1)
+  newMonthlyReport: "New monthly report",
+  newBriefingNote: "New briefing note",
+  monthlyTitle: "Draft a monthly production & despatch report",
+  monthlyHelp:
+    "Pick a month. The tables are filled by code from the facts table (that month, the same month last year and the target); achievement and growth % are computed, never guessed. A figure that is not found shows –. The draft is saved for review.",
+  reportMonth: "Month",
+  briefingTitle: "Draft a briefing note",
+  briefingHelp:
+    "Type the topic of the meeting. Key figures come from the facts table; key points and recent steps come from the uploaded documents, each with its source. The draft is saved for review.",
+  briefingTopic: "Topic",
+  briefingTopicPlaceholder: "e.g. Coking coal production status",
+  fromMonth: "From month (optional)",
+  toMonth: "To month (optional)",
+  generatingMonthly: "Building the tables from the facts and writing the remarks…",
+  generatingBriefing: "Collecting figures and key points from the documents… this can take a few minutes.",
+  remarksByRule: "Remarks were written by rule because the local AI model was not available.",
   // Topic explorer (guide 11)
   topics: "Topics",
   topicsTitle: "What the questions are about",
@@ -290,6 +307,8 @@ const en = {
   "editor.submitConfirmBody": "It goes to an Approver and you will not be able to edit it again unless they return it to you.",
   "users.deactivateConfirm": "Deactivate this account?",
   "users.deactivateConfirmBody": "They will not be able to log in. You can reactivate the account later.",
+  "login.sessionExpired": "Your session has ended. Please log in again — we will take you back to where you were.",
+  "editor.draftRestored": "Restored the unsaved changes you had here.",
 };
 
 export type LabelKey = keyof typeof en;
@@ -395,6 +414,14 @@ const hi: Partial<Record<LabelKey, string>> = {
   openReport: "रिपोर्ट खोलें",
   downloadDocx: "DOCX डाउनलोड करें",
   downloadPdf: "PDF डाउनलोड करें",
+  newMonthlyReport: "नई मासिक रिपोर्ट",
+  newBriefingNote: "नया ब्रीफिंग नोट",
+  monthlyTitle: "मासिक उत्पादन एवं प्रेषण रिपोर्ट का मसौदा बनाएं",
+  reportMonth: "माह",
+  briefingTitle: "ब्रीफिंग नोट का मसौदा बनाएं",
+  briefingTopic: "विषय",
+  fromMonth: "किस माह से (वैकल्पिक)",
+  toMonth: "किस माह तक (वैकल्पिक)",
   topics: "विषय",
   topicsTitle: "प्रश्न किन विषयों पर हैं",
   topicsHelp:
@@ -458,6 +485,8 @@ const hi: Partial<Record<LabelKey, string>> = {
   "editor.submitConfirmBody": "यह अनुमोदक के पास चली जाएगी और जब तक वे इसे वापस नहीं भेजते, आप इसे दोबारा संपादित नहीं कर पाएंगे।",
   "users.deactivateConfirm": "इस खाते को निष्क्रिय करें?",
   "users.deactivateConfirmBody": "वे लॉग इन नहीं कर पाएंगे। आप बाद में खाता फिर सक्रिय कर सकते हैं।",
+  "login.sessionExpired": "आपका सत्र समाप्त हो गया है। कृपया फिर से लॉग इन करें — हम आपको वहीं वापस ले जाएंगे जहाँ आप थे।",
+  "editor.draftRestored": "यहाँ आपके असहेजे बदलाव वापस ला दिए गए हैं।",
 };
 
 export type Lang = "en" | "hi";

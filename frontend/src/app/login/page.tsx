@@ -1,13 +1,27 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useState } from "react";
 
 import { login } from "@/lib/api";
 import { setLang, useT } from "@/lib/i18n";
 
 export default function LoginPage() {
+  // useSearchParams needs a Suspense boundary for Next's static render pass.
+  return (
+    <Suspense fallback={null}>
+      <LoginForm />
+    </Suspense>
+  );
+}
+
+function LoginForm() {
   const router = useRouter();
+  // Where the person was when their session expired, so they land back there.
+  // Only an in-app path counts: anything else could bounce them off-site, and it
+  // must not make the page claim a session ended either.
+  const requested = useSearchParams().get("next");
+  const next = requested?.startsWith("/") && !requested.startsWith("//") ? requested : null;
   const { t, lang } = useT();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -20,7 +34,7 @@ export default function LoginPage() {
     setError(null);
     try {
       await login(email, password);
-      router.replace("/");
+      router.replace(next ?? "/");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       setBusy(false);
@@ -34,6 +48,11 @@ export default function LoginPage() {
           <h1 className="text-2xl font-semibold text-brand">{t("appName")}</h1>
           <p className="mt-1 text-sm text-gray-600">{t("tagline")}</p>
         </div>
+        {next && (
+          <p className="mb-4 rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+            {t("login.sessionExpired")}
+          </p>
+        )}
         <form onSubmit={onSubmit} className="space-y-4 rounded border bg-white p-6 shadow-sm">
           <label className="block">
             <span className="text-sm font-medium">{t("email")}</span>
