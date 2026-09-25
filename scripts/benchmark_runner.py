@@ -756,7 +756,7 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     p.add_argument("--password", help="default: SEED_DEMO_PASSWORD")
     p.add_argument("--benchmark", type=Path, default=check_benchmark.DEFAULT_PATH)
     p.add_argument("--out", type=Path, default=RESULTS_DIR, help="folder for dated results")
-    p.add_argument("--database-url", help="count automation % (facts) in this database")
+    p.add_argument("--database-url", help="count automation %% (facts) in this database")
     p.add_argument("--time-trials", type=Path, help="CSV: id, manual_seconds, assisted_seconds")
     p.add_argument(
         "--rescore",
