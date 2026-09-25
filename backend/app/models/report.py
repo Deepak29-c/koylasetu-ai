@@ -76,6 +76,8 @@ class ReportVersion(Entity):
     edited_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     change_note: Mapped[str | None] = mapped_column(Text)
 
+    editor: Mapped[User] = relationship(foreign_keys=[edited_by], lazy="joined")
+
 
 class ReportCitation(Entity):
     """Links every figure in a report to its source fact or chunk."""
