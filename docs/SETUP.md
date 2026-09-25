@@ -182,8 +182,11 @@ runs `scripts/setup_local_db.py`. Everything is safe to run again.
    backend\.venv\Scripts\python scripts\setup_local_db.py --admin-url postgresql://postgres:YOUR_PASSWORD@localhost:5432/postgres --seed
    ```
 
-   The background worker (RQ) needs `fork`, which Windows does not have: run
-   `rq worker ingest topics reports` inside WSL, or use Docker for the worker only.
+   This gives you the API and the website on Windows. **The background worker (RQ) does not
+   run on native Windows** (it needs `fork`), so uploads stay "Uploaded" until a worker runs.
+   The worker opens the file path the API saved, so the API and the worker must run on the
+   same side. To process uploads on Windows either run the whole backend (API + worker)
+   inside WSL 2 with the Linux steps above (`bash scripts/setup_local.sh`), or use Docker.
 
 ### What `scripts/setup_local_db.py` does (any OS)
 
@@ -206,7 +209,7 @@ The superuser connection comes from `--admin-url`, or `PG_ADMIN_URL`, or
 ```bash
 cd backend
 .venv/bin/uvicorn app.main:app --reload             # Windows: .venv\Scripts\uvicorn
-.venv/bin/rq worker ingest topics reports           # another terminal (WSL on Windows)
+.venv/bin/rq worker ingest topics reports           # another terminal (macOS / Linux)
 cd ../frontend && npm install && npm run dev        # another terminal
 ```
 
@@ -218,4 +221,5 @@ For Q&A, install Ollama from https://ollama.com and pull the models:
 | `pgvector is not installed in this Postgres` | Install it for the **same** Postgres version the server runs (see above) |
 | `Cannot connect to Postgres as admin` | Start Postgres; pass `--admin-url` with a superuser and its password |
 | `password authentication failed for user "koyla"` | Re-run the script: it resets the role's password to the one in `.env` |
-| Port 5432 already used by another Postgres | Point `DATABASE_URL` and `--admin-url` at that server, or stop it |
+| Port 5432 already used by another Postgres | The script says which version answered. Stop the other server, or point `DATABASE_URL` and `--admin-url` at the right port (`pg_lsclusters` on Debian / Ubuntu) |
+| `.env still points at Docker hosts` | Your `.env` came from the Docker setup: re-run with `--fix-env` to switch just those lines to `localhost` |

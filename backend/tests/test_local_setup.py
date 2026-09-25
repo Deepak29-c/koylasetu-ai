@@ -67,3 +67,48 @@ def test_app_db_rejects_names_that_need_quoting():
 )  # fmt: skip
 def test_with_database_keeps_host_and_options(admin, expected):
     assert setup.with_database(admin, "koyla") == expected
+
+
+def test_read_env_matches_the_apps_parser(tmp_path):
+    env = tmp_path / ".env"
+    env.write_text(
+        'DATABASE_URL="postgresql+psycopg://koyla:koyla@localhost:5432/koyla"\n'
+        "export REDIS_URL=redis://localhost:6379/1\n"
+        "OCR_ENGINE=paddle   # paddle | tesseract\n"
+    )
+    values = setup.read_env(env)
+    assert values["DATABASE_URL"] == "postgresql+psycopg://koyla:koyla@localhost:5432/koyla"
+    assert values["REDIS_URL"] == "redis://localhost:6379/1"
+    assert values["OCR_ENGINE"] == "paddle"
+
+
+def test_docker_env_stops_before_touching_postgres(tmp_path, monkeypatch):
+    env = tmp_path / ".env"
+    env.write_text(
+        "DATABASE_URL=postgresql+psycopg://koyla:koyla@db:5432/koyla\n"
+        "REDIS_URL=redis://redis:6379/0\nJWT_SECRET=keep-me\n"
+    )
+    monkeypatch.setattr(setup, "ENV_FILE", env)
+    with pytest.raises(SystemExit, match="--fix-env"):
+        setup.ensure_env()
+    values = setup.ensure_env(fix=True)
+    assert values["DATABASE_URL"] == "postgresql+psycopg://koyla:koyla@localhost:5432/koyla"
+    assert values["REDIS_URL"] == "redis://localhost:6379/0"
+    assert values["JWT_SECRET"] == "keep-me"  # nothing else is touched
+
+
+def test_admin_url_forms():
+    assert setup.admin_url_ok("postgresql+psycopg://postgres@localhost/postgres") == (
+        "postgresql://postgres@localhost/postgres"
+    )
+    with pytest.raises(SystemExit):
+        setup.admin_url_ok("host=localhost dbname=postgres")
+
+
+def test_describe_hides_the_password():
+    assert setup.describe("postgresql://postgres:secret@localhost:5433/postgres") == (
+        "localhost:5433"
+    )
+    assert setup.describe("postgresql:///postgres?host=/var/run/postgresql") == (
+        "/var/run/postgresql"
+    )

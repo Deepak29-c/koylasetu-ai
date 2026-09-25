@@ -119,7 +119,7 @@ Windows steps (pgvector build, Redis via Memurai / WSL) and what each step does 
 ```bash
 cd backend
 .venv/Scripts/uvicorn app.main:app --reload       # Linux/macOS: .venv/bin/uvicorn
-.venv/Scripts/rq worker ingest topics reports      # worker, in another terminal (WSL on Windows)
+.venv/bin/rq worker ingest topics reports          # worker (macOS/Linux; Windows: see SETUP.md)
 ```
 
 ```bash
