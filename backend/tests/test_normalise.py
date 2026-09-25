@@ -122,6 +122,25 @@ def test_find_unit_none():
         ("Coal India Limited", "CIL"),
         ("Singareni Collieries", "SCCL"),
         ("Captive/Others", "CAPTIVE"),
+        # Hindi: codes and names in Devanagari
+        ("सीआईएल", "CIL"),
+        ("कोल इंडिया लिमिटेड", "CIL"),
+        ("एनसीएल", "NCL"),
+        ("नॉर्दर्न कोलफील्ड्स लिमिटेड", "NCL"),
+        ("एमसीएल", "MCL"),
+        ("महानदी कोलफ़ील्ड्स", "MCL"),
+        ("एसईसीएल", "SECL"),
+        ("साउथ ईस्टर्न कोलफील्ड्स", "SECL"),
+        ("ईसीएल", "ECL"),
+        ("ईस्टर्न कोलफील्ड्स", "ECL"),
+        ("बीसीसीएल", "BCCL"),
+        ("भारत कोकिंग कोल लिमिटेड", "BCCL"),
+        ("सीसीएल", "CCL"),
+        ("डब्ल्यूसीएल", "WCL"),
+        ("वेस्टर्न कोलफील्ड्स", "WCL"),
+        ("एससीसीएल", "SCCL"),
+        ("सिंगरेनी कोलियरीज", "SCCL"),
+        ("कैप्टिव", "CAPTIVE"),
     ],
 )
 def test_subsidiary_aliases(text, code):
@@ -131,6 +150,14 @@ def test_subsidiary_aliases(text, code):
 
 def test_subsidiary_match_returns_the_rest_of_the_label():
     assert match_subsidiaries("1 ECL RAJMAHAL OC") == ({"ECL"}, "1 RAJMAHAL OC")
+    assert match_subsidiaries("एनसीएल का उत्पादन") == ({"NCL"}, "का उत्पादन")
+
+
+def test_hindi_code_inside_a_longer_code_or_word_is_not_matched():
+    # "ईसीएल" is inside "एसईसीएल", "सीसीएल" inside "बीसीसीएल": only the whole code counts
+    assert match_subsidiaries("एसईसीएल")[0] == {"SECL"}
+    assert match_subsidiaries("बीसीसीएल और एससीसीएल")[0] == {"BCCL", "SCCL"}
+    assert match_subsidiaries("पूर्वी क्षेत्र")[0] == set()
 
 
 @pytest.mark.parametrize(
