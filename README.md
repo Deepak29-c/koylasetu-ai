@@ -24,6 +24,20 @@ The full technical spec is [docs/KoylaSetu_AI_Developer_Guide.docx](docs/KoylaSe
 
 Built so far:
 
+**Login in httpOnly cookies** (guide 14):
+- `POST /auth/login` and `/auth/refresh` set `ks_access` (path `/`) and `ks_refresh` (path
+  `/auth`) as HttpOnly, SameSite=Lax cookies, so no page script can read a token. The web app
+  keeps nothing in sessionStorage. `POST /auth/logout` clears both cookies
+- The JSON body still carries both tokens, and an `Authorization: Bearer` header still works:
+  `scripts/load_sources.py` and the benchmark runner keep logging in that way
+- CSRF: a cookie-authenticated request that changes data (POST, PATCH, PUT, DELETE) must send
+  `X-Requested-With: koylasetu`, or it gets a 403. Bearer requests do not need it
+- `COOKIE_SECURE=true` (in `.env`) for any HTTPS deployment; it stays `false` for
+  `http://localhost`. The website and the API must share a site (same host name, or two
+  subdomains of one domain) because SameSite=Lax cookies are not sent across sites: with the
+  site at `http://localhost:3000`, set `NEXT_PUBLIC_API_URL=http://localhost:8000`, not
+  `127.0.0.1`
+
 **Errors people can act on** (#69, #70):
 - A document whose original file is gone: its page and page-image endpoints return a handled
   404 (`{"detail": "The original file for \"<title>\" could not be found…", "code":
@@ -228,7 +242,7 @@ numbers need the local models pulled and the source documents loaded.
 **Setup (step 0):**
 - Docker Compose for all 6 services
 - All tables from guide section 6, plus the first Alembic migration
-- Login with JWT access and refresh tokens (argon2 password hashing); `/me`
+- Login with JWT access and refresh tokens (argon2 password hashing), kept in httpOnly cookies; `/me`
 - RBAC matrix from guide 2.1, checked on every endpoint; org-unit scoping in queries
 - Document upload: file type checked by content, 100 MB limit, sha256 duplicate check, audit log, ingest job queued
 - Document list, detail and retry endpoints

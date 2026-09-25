@@ -46,7 +46,7 @@ export default function ProfilePage() {
     try {
       await changePassword(current, next);
       toast({ tone: "success", title: t("passwordChanged") });
-      logout();
+      await logout();
       router.replace("/login");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : String(err));
