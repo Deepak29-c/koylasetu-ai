@@ -1,11 +1,21 @@
 "use client";
 
+import { CalendarDays, Sparkles } from "lucide-react";
 import { useState } from "react";
 
 import { useMe } from "@/components/AppShell";
-import ReportDraftView, { newKey } from "@/components/ReportDraftView";
+import DraftProgress from "@/components/drafts/DraftProgress";
+import HowItWorks from "@/components/drafts/HowItWorks";
+import { useDraftRequest } from "@/components/drafts/useDraftRequest";
+import ReportDraftView from "@/components/ReportDraftView";
+import Alert from "@/components/ui/Alert";
+import { Button } from "@/components/ui/Button";
+import { Card, CardHeader } from "@/components/ui/Card";
+import { Field, Input } from "@/components/ui/Field";
+import PageHeader from "@/components/ui/PageHeader";
 import { draftMonthlyReport, type ReportDraftOut } from "@/lib/api";
 import { useT } from "@/lib/i18n";
+import { can } from "@/lib/permissions";
 
 /** Last month as "YYYY-MM": the usual month to report on. */
 function lastMonth(): string {
@@ -19,67 +29,109 @@ export default function NewMonthlyReportPage() {
   const me = useMe();
   const { t } = useT();
   const [month, setMonth] = useState(lastMonth);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [draft, setDraft] = useState<ReportDraftOut | null>(null);
-  // Same key while the month is unchanged, so a retry returns the draft already made.
-  const [requestKey, setRequestKey] = useState<string | null>(null);
+  const [monthError, setMonthError] = useState<string | null>(null);
+  const job = useDraftRequest<ReportDraftOut>();
 
-  if (!me.permissions.includes("edit_reports")) return <p className="text-gray-600">{t("noPermission")}</p>;
+  const header = (
+    <PageHeader
+      title={t("newMonthlyReport")}
+      description={t("monthlyHelp")}
+      breadcrumbs={[{ label: t("reports"), href: "/reports" }]}
+    />
+  );
 
-  async function onSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (busy || !month) return;
-    const key = requestKey ?? newKey();
-    setRequestKey(key);
-    setBusy(true);
-    setError(null);
-    setDraft(null);
-    try {
-      setDraft(await draftMonthlyReport(month, key));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusy(false);
+  if (!can(me, "edit_reports")) {
+    return (
+      <div>
+        {header}
+        <Alert tone="warning">{t("noPermission")}</Alert>
+      </div>
+    );
+  }
+
+  function submit() {
+    if (!month) {
+      setMonthError(t("drafts.monthRequired"));
+      return;
     }
+    void job.run((key) => draftMonthlyReport(month, key));
   }
 
   return (
-    <div className="max-w-5xl space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">{t("monthlyTitle")}</h1>
-        <p className="text-sm text-gray-600">{t("monthlyHelp")}</p>
+    <div className="space-y-6">
+      {header}
+
+      <div className="grid items-start gap-6 xl:grid-cols-2">
+      <form
+        noValidate
+        onSubmit={(e) => {
+          e.preventDefault();
+          submit();
+        }}
+      >
+        <fieldset disabled={job.busy} className="min-w-0 space-y-6">
+          <legend className="sr-only">{t("monthlyTitle")}</legend>
+          <Card>
+            <CardHeader title={t("drafts.reportPeriod")} icon={<CalendarDays />} />
+            <Field
+              label={t("reportMonth")}
+              required
+              hint={t("drafts.monthHelp")}
+              error={monthError}
+              className="max-w-xs"
+            >
+              <Input
+                type="month"
+                value={month}
+                onChange={(e) => {
+                  setMonth(e.target.value);
+                  setMonthError(null);
+                  job.inputChanged();
+                }}
+              />
+            </Field>
+          </Card>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <Button type="submit" variant="primary" size="lg" loading={job.busy} icon={<Sparkles size={16} aria-hidden />}>
+              {t("generateDraft")}
+            </Button>
+            {job.busy && <span className="text-xs text-muted">{t("drafts.formLocked")}</span>}
+          </div>
+        </fieldset>
+      </form>
+      <HowItWorks steps={(["drafts.step.collectFigures","drafts.step.computeTables","drafts.step.writeRemarks","drafts.step.saveDraft"] as const).map((k) => t(k))} />
       </div>
 
-      <form onSubmit={onSubmit} className="flex flex-wrap items-end gap-4 rounded border bg-white p-4">
-        <label className="block">
-          <span className="text-sm font-medium">{t("reportMonth")}</span>
-          <input
-            type="month"
-            required
-            value={month}
-            onChange={(e) => {
-              setMonth(e.target.value);
-              setRequestKey(null);
-            }}
-            className="mt-1 block rounded border px-3 py-2"
-          />
-        </label>
-        <button
-          type="submit"
-          disabled={busy || !month}
-          className="rounded bg-brand px-6 py-2.5 font-medium text-white disabled:opacity-50"
-        >
-          {t("generateDraft")}
-        </button>
-        {busy && <span className="text-sm text-gray-600">{t("generatingMonthly")}</span>}
-      </form>
-
-      {error && <p className="rounded border border-red-300 bg-red-50 p-3 text-red-800">{error}</p>}
-      {draft?.report.content_json.remarks_by === "rule" && (
-        <p className="text-sm text-gray-600">{t("remarksByRule")}</p>
+      {job.busy && job.startedAt !== null && (
+        <DraftProgress
+          startedAt={job.startedAt}
+          secondsPerStep={8}
+          detail={t("generatingMonthly")}
+          steps={[
+            t("drafts.step.collectFigures"),
+            t("drafts.step.computeTables"),
+            t("drafts.step.writeRemarks"),
+            t("drafts.step.saveDraft"),
+          ]}
+        />
       )}
-      {draft && <ReportDraftView draft={draft} filePrefix="monthly-report" />}
+
+      {job.error && (
+        <Alert
+          tone="danger"
+          title={t("drafts.failed")}
+          action={
+            <Button variant="outline" size="sm" onClick={submit}>
+              {t("retry")}
+            </Button>
+          }
+        >
+          {job.error}
+        </Alert>
+      )}
+
+      {job.result && <ReportDraftView draft={job.result} filePrefix="monthly-report" />}
     </div>
   );
 }

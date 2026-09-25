@@ -1,7 +1,10 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { CircleCheck, TriangleAlert } from "lucide-react";
+import { useRef } from "react";
 
+import { Button } from "@/components/ui/Button";
+import Dialog from "@/components/ui/Dialog";
 import { useT } from "@/lib/i18n";
 
 type Props = {
@@ -10,9 +13,15 @@ type Props = {
   confirmLabel: string;
   /** Red confirm button for anything the person cannot simply undo. */
   danger?: boolean;
+  /** Green confirm button for a positive decision (approve, accept). */
+  positive?: boolean;
   busy?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
+  /** Extra content between the message and the buttons (e.g. a reason field). */
+  children?: React.ReactNode;
+  /** Disable the confirm button (e.g. until a required reason is typed). */
+  confirmDisabled?: boolean;
 };
 
 /**
@@ -27,52 +36,44 @@ export default function ConfirmDialog({
   body,
   confirmLabel,
   danger,
+  positive,
   busy,
   onConfirm,
   onCancel,
+  children,
+  confirmDisabled,
 }: Props) {
   const { t } = useT();
   const confirmRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    confirmRef.current?.focus();
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onCancel();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onCancel]);
+  const tone = danger ? "danger" : positive ? "success" : "default";
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="confirm-title"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-      onClick={onCancel}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-md space-y-4 rounded border bg-white p-5 shadow-lg"
-      >
-        <h2 id="confirm-title" className="text-lg font-semibold">
-          {title}
-        </h2>
-        <p className="text-sm text-gray-700">{body}</p>
-        <div className="flex flex-wrap justify-end gap-3">
-          <button onClick={onCancel} className="rounded border px-4 py-2 text-sm font-medium">
+    <Dialog
+      size="sm"
+      title={title}
+      description={body}
+      tone={tone}
+      icon={danger ? <TriangleAlert /> : positive ? <CircleCheck /> : undefined}
+      onClose={busy ? () => {} : onCancel}
+      initialFocus={children ? undefined : confirmRef}
+      footer={
+        <>
+          <Button variant="outline" onClick={onCancel} disabled={busy}>
             {t("cancel")}
-          </button>
-          <button
+          </Button>
+          <Button
             ref={confirmRef}
+            variant={danger ? "danger" : positive ? "success" : "primary"}
             onClick={onConfirm}
-            disabled={busy}
-            className={`rounded px-4 py-2 text-sm font-medium text-white disabled:opacity-60 ${
-              danger ? "bg-red-700" : "bg-brand"
-            }`}
+            loading={busy}
+            disabled={confirmDisabled}
           >
             {confirmLabel}
-          </button>
-        </div>
-      </div>
-    </div>
+          </Button>
+        </>
+      }
+    >
+      {children}
+    </Dialog>
   );
 }
