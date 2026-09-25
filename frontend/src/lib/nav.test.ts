@@ -36,7 +36,7 @@ const NEW_REPORTS = ["/pq-replies/new", "/monthly-reports/new", "/briefing-notes
 const EXPECTED: Record<string, string[]> = {
   admin: [
     "/", "/ask", "/reports", "/upload", "/documents", "/review", "/topics", "/metrics",
-    "/admin/users", "/admin/templates", "/admin/rules", "/admin/status", "/audit",
+    "/admin/users", "/admin/templates", "/admin/rules", "/audit",
   ],
   operator: ["/", "/ask", "/upload", "/documents", "/topics"],
   reviewer: ["/", "/ask", "/upload", "/documents", "/review", "/topics"],
