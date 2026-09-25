@@ -34,7 +34,10 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
 const NEW_REPORTS = ["/pq-replies/new", "/monthly-reports/new", "/briefing-notes/new"];
 
 const EXPECTED: Record<string, string[]> = {
-  admin: ["/", "/ask", "/reports", "/upload", "/documents", "/review", "/topics", "/metrics", "/admin/users", "/audit"],
+  admin: [
+    "/", "/ask", "/reports", "/upload", "/documents", "/review", "/topics", "/metrics",
+    "/admin/users", "/admin/templates", "/admin/rules", "/admin/status", "/audit",
+  ],
   operator: ["/", "/ask", "/upload", "/documents", "/topics"],
   reviewer: ["/", "/ask", "/upload", "/documents", "/review", "/topics"],
   analyst: ["/", "/ask", "/reports", ...NEW_REPORTS, "/documents", "/topics"],

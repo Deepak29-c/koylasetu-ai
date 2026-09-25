@@ -102,7 +102,8 @@ function New-LocalEnv {
         INGEST_INLINE       = 'true'
         JWT_SECRET          = $secret
         CORS_ORIGINS        = 'http://localhost:3000,http://127.0.0.1:3000'
-        NEXT_PUBLIC_API_URL = 'http://127.0.0.1:8000'
+        # Same host name as the website: the login cookies are only sent within one site.
+        NEXT_PUBLIC_API_URL = 'http://localhost:8000'
     }
     $out = New-Object System.Collections.Generic.List[string]
     foreach ($line in Get-Content (Join-Path $Root '.env.example')) {
@@ -140,7 +141,7 @@ function Ensure-Setup($dbHost, $dbPort) {
     }
     $feEnv = Join-Path $Root 'frontend\.env.local'
     if (-not (Test-Path $feEnv)) {
-        $api = Read-EnvValue 'NEXT_PUBLIC_API_URL' 'http://127.0.0.1:8000'
+        $api = Read-EnvValue 'NEXT_PUBLIC_API_URL' 'http://localhost:8000'
         [IO.File]::WriteAllLines($feEnv, @("NEXT_PUBLIC_API_URL=$api"), (New-Object Text.UTF8Encoding $false))
     }
     if ((Test-Path $PgData) -or (Test-Port $dbHost $dbPort)) { return }

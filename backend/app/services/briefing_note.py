@@ -40,6 +40,11 @@ from app.services.report_builder import (
     section,
 )
 
+TITLE = "BRIEFING NOTE"
+KEY_FIGURES_HEADING = "KEY FIGURES"
+TREND_HEADING = "TREND"  # followed by the figure: "TREND: COAL PRODUCTION, CIL"
+KEY_POINTS_HEADING = "KEY POINTS"
+STEPS_HEADING = "RECENT STEPS / INITIATIVES"
 MAX_KEY_POINTS = 7
 MAX_STEPS = 5
 MAX_TREND = 12
@@ -231,7 +236,7 @@ def key_figures(
                         "columns": ["Period", figure_name(metric, code), "Source"],
                         "rows": trend_rows,
                     }
-                    trend_title = f"TREND: {figure_name(metric, code).upper()}"
+                    trend_title = f"{TREND_HEADING}: {figure_name(metric, code).upper()}"
     table = {"columns": KEY_COLUMNS, "rows": rows} if rows else None
     return KeyFigures(table, trend, trend_title, unverified, missing)
 
@@ -328,12 +333,14 @@ def build_content(
         notes.append(NOT_FOUND_NOTE)
     sections = []
     if figures.table:
-        sections.append(section("key_figures", "KEY FIGURES", table=figures.table, notes=notes))
+        sections.append(
+            section("key_figures", KEY_FIGURES_HEADING, table=figures.table, notes=notes)
+        )
     else:
         sections.append(
             section(
                 "key_figures",
-                "KEY FIGURES",
+                KEY_FIGURES_HEADING,
                 ["No figures on this topic were found in the facts table."],
             )
         )
@@ -345,12 +352,14 @@ def build_content(
     )
     steps, removed_steps, steps_nf = points_from_answer(steps_answer, registry, "steps", MAX_STEPS)
     sections.append(
-        section("key_points", "KEY POINTS", points, bullets=True, removed_numbers=removed_points)
+        section(
+            "key_points", KEY_POINTS_HEADING, points, bullets=True, removed_numbers=removed_points
+        )
     )
     sections.append(
         section(
             "steps",
-            "RECENT STEPS / INITIATIVES",
+            STEPS_HEADING,
             steps,
             bullets=True,
             removed_numbers=removed_steps,
@@ -362,7 +371,7 @@ def build_content(
         "topic": topic,
         "from": start,
         "to": end,
-        "title": "BRIEFING NOTE",
+        "title": TITLE,
         "subtitle": topic.strip() + (f" ({period})" if period else ""),
         "metrics": metrics,
         "subsidiaries": codes,

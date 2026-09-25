@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_minutes: int = 30
     refresh_token_days: int = 7
+    # Send the login cookies over HTTPS only. Off by default so http://localhost works;
+    # turn it on for any deployment served over HTTPS.
+    cookie_secure: bool = False
     cors_origins: str = "http://localhost:3000"
 
     seed_demo_password: str = "change-me-too"

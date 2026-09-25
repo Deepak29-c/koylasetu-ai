@@ -57,7 +57,7 @@ eval/pq_benchmark.jsonl   34 real Lok Sabha coal PQs with official answers and k
 
 - **Backend**: FastAPI (Python 3.12+ fine despite `pyproject.toml` saying 3.11), SQLAlchemy 2.0, Alembic, Postgres 15/16 + pgvector, Redis + RQ for background jobs.
 - **Frontend**: Next.js (App Router) + Tailwind, plain `fetch` wrapped in `lib/api.ts` (no React Query / SWR — deliberately simple).
-- **Auth**: JWT access (30 min) + refresh (7 day) tokens, argon2 password hashing. Tokens live in `sessionStorage` (explicit TODO in code to move to httpOnly cookies before real deployment).
+- **Auth**: JWT access (30 min) + refresh (7 day) tokens, argon2 password hashing. The browser gets them as httpOnly cookies (`ks_access`, `ks_refresh`; `app/core/cookies.py`); cookie-authenticated POST/PATCH/PUT/DELETE must send `X-Requested-With: koylasetu` (CSRF). Scripts still use the JSON tokens as a Bearer header. Set `COOKIE_SECURE=true` behind HTTPS, and serve the website and the API from one site.
 - **LLM**: Ollama, local-only by default (`ALLOW_EXTERNAL_CALLS=false`). `backend/app/llm/client.py` is the only thing that talks to it.
 - **RBAC + org scoping**: every list/detail query in every router is wrapped in `scope_to_user()` (`app/core/deps.py`) — a user only sees their own org unit's rows, unless their unit is `CIL_HQ` or `MINISTRY` (see `ALL_SCOPE_ORG_CODES`), in which case they see everything. **Apply this on every new query** — it's not automatic, you have to call it. The audit
   log was missed exactly this way and shipped unscoped for a while (see §9); when you add a

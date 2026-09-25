@@ -48,6 +48,9 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "nav.admin",
     items: [
       { href: "/admin/users", label: "users", needs: ["manage_admin"] },
+      { href: "/admin/templates", label: "adminTemplates.title", needs: ["manage_admin"] },
+      { href: "/admin/rules", label: "adminRules.title", needs: ["manage_admin"] },
+      { href: "/admin/status", label: "adminStatus.title", needs: ["manage_admin"] },
       { href: "/audit", label: "auditLog", needs: ["view_audit"] },
     ],
   },
