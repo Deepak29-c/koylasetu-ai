@@ -239,7 +239,7 @@ def refresh(
     audit.record(
         db,
         "topics_refresh",
-        user_id=user.id,
+        actor=user,
         entity="topics",
         details={"queued": queued},
         request=request,
