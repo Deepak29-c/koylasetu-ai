@@ -77,6 +77,19 @@ def test_me_lists_permissions(client_as):
     assert body["org_unit"]["code"] == "CIL_HQ"
 
 
+def test_only_reviewer_or_admin_can_open_review_queue(client_as):
+    assert client_as(["analyst"]).get("/review/issues").status_code == 403
+    assert client_as(["viewer"]).post("/review/facts/00000000-0000-0000-0000-000000000000",
+                                      json={"action": "ACCEPT"}).status_code == 403  # fmt: skip
+
+
+def test_edit_and_reject_need_a_comment(client_as):
+    url = "/review/facts/00000000-0000-0000-0000-000000000000"
+    reviewer = client_as(["reviewer"])
+    assert reviewer.post(url, json={"action": "REJECT"}).status_code == 422
+    assert reviewer.post(url, json={"action": "EDIT", "comment": "typo"}).status_code == 422
+
+
 def test_viewer_cannot_list_raw_facts(client_as):
     doc_id = "00000000-0000-0000-0000-000000000001"
     assert client_as(["viewer"]).get(f"/documents/{doc_id}/facts").status_code == 403
