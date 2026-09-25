@@ -29,8 +29,9 @@ Built so far:
   state, category, coking, period (month, "upto" = year to date, FY, "as on" date),
   subsidiary-wise / state-wise breakdown. Company and state names use the extractor's alias
   map; the all-India total is `INDIA`; coking coal is only the `coking_coal_production` metric
-- The extractor skips year-to-date ("upto") figures and stores an "as on" date as its month,
-  so "upto" and "as on" questions find no facts yet and go to the text route
+- The extractor stores an "as on 01.04.2025" figure under its month, so the router asks for
+  "2025-04" and resource figures read "as on Apr 2025". It skips year-to-date ("upto")
+  figures, so "upto" questions find no facts yet and go to the text route
 - Parameterised facts query (the model never writes SQL) in a READ ONLY transaction with a 5 s
   timeout, scoped to the user's units; REJECTED facts and unconvertible units never used,
   VERIFIED preferred, unverified ones labelled (also in the plain fallback sentence). A period

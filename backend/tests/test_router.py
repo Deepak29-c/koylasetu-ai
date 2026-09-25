@@ -22,7 +22,7 @@ def test_ncl_production_vs_target_in_a_month():
         ("MCL despatch in Dec'24", PeriodType.MONTH, ["2024-12"]),
         ("MCL despatch in January 2025", PeriodType.MONTH, ["2025-01"]),
         ("CIL production upto December 2024", PeriodType.YTD, ["2024-12"]),
-        ("Total coal resource of India as on 01.04.2025", PeriodType.AS_ON, ["2025-04-01"]),
+        ("Total coal resource of India as on 01.04.2025", PeriodType.MONTH, ["2025-04"]),
     ],
 )
 def test_periods(q, period_type, periods):

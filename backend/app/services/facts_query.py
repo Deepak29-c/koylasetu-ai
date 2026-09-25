@@ -55,6 +55,8 @@ class FactRow:
         if self.period_type == PeriodType.YTD:
             return f"April to {_month_name(self.period)} (cumulative)"
         if self.period_type == PeriodType.MONTH:
+            if self.metric == Metric.COAL_RESOURCE:  # a stock figure: "as on" that month
+                return f"as on {_month_name(self.period)}"
             return _month_name(self.period)
         if self.period_type == PeriodType.AS_ON:
             y, m, d = self.period.split("-")

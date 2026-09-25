@@ -132,8 +132,9 @@ def extract_filters(question: str) -> Filters:
         f.category = "Measured" if word in ("proved", "proven") else word.capitalize()
 
     if m := _AS_ON.search(q):
-        f.period_type = PeriodType.AS_ON
-        f.periods = [f"{int(m.group(3)):04d}-{int(m.group(2)):02d}-{int(m.group(1)):02d}"]
+        # The extractor stores an "as on 01.04.2025" figure under its month, "2025-04"
+        f.period_type = PeriodType.MONTH
+        f.periods = [f"{int(m.group(3)):04d}-{int(m.group(2)):02d}"]
     else:
         fys = []
         for m in _FY.finditer(q):
