@@ -13,6 +13,17 @@ const SEV_STYLE = {
   low: "bg-gray-100 text-gray-700",
 };
 
+type Decision = "ACCEPT" | "EDIT" | "REJECT";
+
+const DONE_LABEL: Record<Decision, LabelKey> = {
+  ACCEPT: "reviewDoneAccepted",
+  EDIT: "reviewDoneCorrected",
+  REJECT: "reviewDoneRejected",
+};
+
+// What the reviewer just decided, shown for a few seconds after the queue moves on.
+type Toast = { id: number; decision: Decision; figure: string; label: string | null; last: boolean };
+
 function periodText(f: Fact) {
   if (!f.period) return "—";
   if (f.period_type === "YTD") return `Apr–${f.period} (year to date)`;
@@ -27,7 +38,14 @@ export default function ReviewPage() {
   const [summary, setSummary] = useState<ReviewSummary | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [toast, setToast] = useState<Toast | null>(null);
   const allowed = me.permissions.includes("review_facts");
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast((cur) => (cur?.id === toast.id ? null : cur)), 5000);
+    return () => clearTimeout(timer);
+  }, [toast]);
 
   const load = useCallback(
     () =>
@@ -50,15 +68,44 @@ export default function ReviewPage() {
 
   const selected = items?.find((i) => i.fact.id === selectedId) ?? null;
 
-  function done(factId: string) {
-    const rest = (items ?? []).filter((i) => i.fact.id !== factId);
+  function done(fact: Fact, decision: Decision, figure: string) {
+    const rest = (items ?? []).filter((i) => i.fact.id !== fact.id);
     setItems(rest);
     setSelectedId(rest[0]?.fact.id ?? null);
+    setToast({ id: Date.now(), decision, figure, label: fact.label, last: rest.length === 0 });
     api<ReviewSummary>("/review/summary").then(setSummary, () => {});
   }
 
   return (
     <div className="space-y-5">
+      {/* Always rendered so screen readers announce each new decision */}
+      <div role="status" aria-live="polite" className="fixed inset-x-4 bottom-4 z-50 sm:left-auto sm:right-6 sm:max-w-md">
+        {toast && (
+          <div
+            className={`flex items-start gap-3 rounded border p-4 text-sm shadow-lg ${
+              toast.decision === "REJECT" ? "border-red-300 bg-red-50 text-red-900" : "border-green-300 bg-green-50 text-green-900"
+            }`}
+          >
+            <span aria-hidden="true" className="text-lg leading-none">
+              {toast.decision === "REJECT" ? "✕" : "✓"}
+            </span>
+            <div className="flex-1">
+              <p className="font-semibold">
+                {t(DONE_LABEL[toast.decision])}: {toast.figure}
+              </p>
+              {toast.label && <p className="mt-0.5">{toast.label}</p>}
+              <p className="mt-1 text-xs opacity-80">{t(toast.last ? "reviewDoneLast" : "reviewDoneNext")}</p>
+            </div>
+            <button
+              onClick={() => setToast(null)}
+              className="rounded px-2 py-0.5 text-xs font-medium underline hover:bg-black/5"
+            >
+              {t("reviewDoneClose")}
+            </button>
+          </div>
+        )}
+      </div>
+
       <div>
         <h1 className="text-2xl font-semibold">{t("reviewTitle")}</h1>
         <p className="text-sm text-gray-600">{t("reviewHelp")}</p>
@@ -123,7 +170,13 @@ export default function ReviewPage() {
   );
 }
 
-function ReviewDetail({ item, onDone }: { item: ReviewItem; onDone: (factId: string) => void }) {
+function ReviewDetail({
+  item,
+  onDone,
+}: {
+  item: ReviewItem;
+  onDone: (fact: Fact, decision: Decision, figure: string) => void;
+}) {
   const { t } = useT();
   const f = item.fact;
   const [page, setPage] = useState<PageData | null>(null);
@@ -139,7 +192,7 @@ function ReviewDetail({ item, onDone }: { item: ReviewItem; onDone: (factId: str
     );
   }, [f.document_id, f.page_no]);
 
-  async function submit(action: "ACCEPT" | "EDIT" | "REJECT") {
+  async function submit(action: Decision) {
     if (action !== "ACCEPT" && !comment.trim()) {
       setError(t("commentRequired"));
       return;
@@ -147,7 +200,7 @@ function ReviewDetail({ item, onDone }: { item: ReviewItem; onDone: (factId: str
     setBusy(true);
     setError(null);
     try {
-      await api(`/review/facts/${f.id}`, {
+      const saved = await api<Fact>(`/review/facts/${f.id}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -156,7 +209,9 @@ function ReviewDetail({ item, onDone }: { item: ReviewItem; onDone: (factId: str
           comment: comment.trim() || undefined,
         }),
       });
-      onDone(f.id);
+      // Show the value the server stored (for a correction, the new one), not what was typed
+      const figure = action === "EDIT" ? `${f.value_raw} → ${saved.value} ${f.unit ?? ""}` : `${f.value_raw} ${f.unit ?? ""}`;
+      onDone(f, action, figure.trim());
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setBusy(false);
