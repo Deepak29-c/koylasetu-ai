@@ -82,6 +82,20 @@ npm run dev
 policy has blocked this file"), reinstall it as pure Python inside the venv:
 `DISABLE_SQLALCHEMY_CEXT=1 .venv/Scripts/pip install --force-reinstall --no-deps --no-binary sqlalchemy sqlalchemy`
 
+## Public source documents
+
+We build and test only on real public government documents, never made-up figures.
+Download them (about 50 MB, needs internet, Python 3 standard library only):
+
+```bash
+python scripts/fetch_sources.py
+```
+
+Files go to `data/raw/` (git-ignored). Each file is recorded in `data/sources.csv` with its
+official URL, publisher, download date and sha256. Safe to re-run: it skips files it already has.
+Current set: 5 key documents (CMPDI coal inventories, Monthly Coal Statistics, Ministry annual
+report chapter, one PQ answer) + 93 Lok Sabha PQ answers from the Ministry of Coal archive.
+
 ## Checks
 
 ```bash
