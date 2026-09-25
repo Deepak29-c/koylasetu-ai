@@ -135,6 +135,19 @@ All use the password you set in `SEED_DEMO_PASSWORD`.
 | "An Application Control policy has blocked this file" (Python outside Docker) | Windows Smart App Control blocks SQLAlchemy's compiled files. See the Windows note in the README |
 | Port 3000, 8000 or 5432 already in use | Stop the other app using that port (e.g. a local Postgres or another Next.js project) |
 | Login says "Wrong email or password" | Use the `SEED_DEMO_PASSWORD` from your own `.env`, and make sure you ran the seed step |
+| Login works but the next screen sends you straight back to the login page | The login is kept in httpOnly cookies, which the browser only sends when the website and the API are on the same site. Use the same host name for both: open http://localhost:3000 and set `NEXT_PUBLIC_API_URL=http://localhost:8000` (not `127.0.0.1`) in `.env` and `frontend/.env.local`, then restart the website. Over plain http keep `COOKIE_SECURE=false` |
+
+### Login cookies in a deployment
+
+The API sets the login as httpOnly cookies (`ks_access`, `ks_refresh`), so no token is kept
+where page scripts can read it. For a shared server:
+
+- Serve it over HTTPS and set `COOKIE_SECURE=true` in `.env`.
+- Put the website and the API on one site, e.g. `koylasetu.example.gov.in` and
+  `api.koylasetu.example.gov.in`, or the API under the same host. Add the website's address to
+  `CORS_ORIGINS`.
+- Scripts (`scripts/load_sources.py`, the benchmark runner) keep using the tokens from the
+  login reply as a Bearer header; nothing changes for them.
 
 ## 8. Git workflow
 
