@@ -289,6 +289,38 @@ async function refreshTokens(): Promise<boolean> {
   return true;
 }
 
+/**
+ * Send an expired session back to the login screen, remembering where they were.
+ *
+ * Handled here rather than in each page: every screen called `api()` and only AppShell's
+ * first `/me` knew what a 401 meant, so everywhere else showed a dead red box with no way
+ * back (#45).
+ */
+let leavingForLogin = false;
+
+function toLoginAgain(): void {
+  if (typeof window === "undefined") return;
+  // Several requests can 401 at once (React re-invokes effects in development, and a
+  // page often loads two things). Without this guard the first call clears the token
+  // and navigates to /login?next=…, then the second sees no token, decides nobody was
+  // signed in, and navigates to a bare /login — aborting the first and losing `next`.
+  if (leavingForLogin) return;
+  leavingForLogin = true;
+  const { pathname, search } = window.location;
+  // Someone who never had a token is not resuming a session, they are just arriving.
+  // Only that case gets `next`, which is what makes the login page say "session ended".
+  const hadSession = read(ACCESS) !== null;
+  logout();
+  if (pathname === "/login") return; // already there; nothing to come back to
+  const resuming = hadSession && pathname !== "/";
+  // A full page load on purpose, not router.push: it drops every bit of in-memory state
+  // left over from the expired session. This module is not a component, so there is no
+  // router here anyway.
+  window.location.assign(
+    resuming ? `/login?next=${encodeURIComponent(pathname + search)}` : "/login",
+  );
+}
+
 export async function api<T>(path: string, init: RequestInit = {}, retry = true): Promise<T> {
   const headers = new Headers(init.headers);
   const token = read(ACCESS);
@@ -299,7 +331,10 @@ export async function api<T>(path: string, init: RequestInit = {}, retry = true)
   } catch {
     throw new ApiError(0, "Cannot reach the KoylaSetu server. Please check that the API is running.");
   }
-  if (res.status === 401 && retry && (await refreshTokens())) return api<T>(path, init, false);
+  if (res.status === 401 && retry) {
+    if (await refreshTokens()) return api<T>(path, init, false);
+    toLoginAgain();
+  }
   if (!res.ok) throw new ApiError(res.status, await errorMessage(res));
   if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
@@ -311,7 +346,10 @@ export async function fetchImageUrl(path: string, retry = true): Promise<string>
   const token = read(ACCESS);
   if (token) headers.set("Authorization", `Bearer ${token}`);
   const res = await fetch(`${API_URL}${path}`, { headers });
-  if (res.status === 401 && retry && (await refreshTokens())) return fetchImageUrl(path, false);
+  if (res.status === 401 && retry) {
+    if (await refreshTokens()) return fetchImageUrl(path, false);
+    toLoginAgain();
+  }
   if (!res.ok) throw new ApiError(res.status, await errorMessage(res));
   return URL.createObjectURL(await res.blob());
 }

@@ -307,6 +307,8 @@ const en = {
   "editor.submitConfirmBody": "It goes to an Approver and you will not be able to edit it again unless they return it to you.",
   "users.deactivateConfirm": "Deactivate this account?",
   "users.deactivateConfirmBody": "They will not be able to log in. You can reactivate the account later.",
+  "login.sessionExpired": "Your session has ended. Please log in again — we will take you back to where you were.",
+  "editor.draftRestored": "Restored the unsaved changes you had here.",
 };
 
 export type LabelKey = keyof typeof en;
@@ -483,6 +485,8 @@ const hi: Partial<Record<LabelKey, string>> = {
   "editor.submitConfirmBody": "यह अनुमोदक के पास चली जाएगी और जब तक वे इसे वापस नहीं भेजते, आप इसे दोबारा संपादित नहीं कर पाएंगे।",
   "users.deactivateConfirm": "इस खाते को निष्क्रिय करें?",
   "users.deactivateConfirmBody": "वे लॉग इन नहीं कर पाएंगे। आप बाद में खाता फिर सक्रिय कर सकते हैं।",
+  "login.sessionExpired": "आपका सत्र समाप्त हो गया है। कृपया फिर से लॉग इन करें — हम आपको वहीं वापस ले जाएंगे जहाँ आप थे।",
+  "editor.draftRestored": "यहाँ आपके असहेजे बदलाव वापस ला दिए गए हैं।",
 };
 
 export type Lang = "en" | "hi";
