@@ -106,17 +106,20 @@ Demo logins (password = `SEED_DEMO_PASSWORD`): `admin@`, `operator@`, `reviewer@
 
 ## Run without Docker
 
-You still need PostgreSQL 16 with the pgvector extension, and Redis, running locally.
-Set `DATABASE_URL` / `REDIS_URL` in `.env` to `localhost`.
+Postgres 16 + pgvector and Redis on your own machine, no Docker. On macOS / Ubuntu / Debian:
+
+```bash
+bash scripts/setup_local.sh --seed       # installs + starts services, creates DB, migrates, seeds
+```
+
+Windows steps (pgvector build, Redis via Memurai / WSL) and what each step does are in
+[docs/SETUP.md, section 9](docs/SETUP.md#9-run-without-docker). After pulling new code, re-run
+`scripts/setup_local_db.py`; it only does what is missing. Then:
 
 ```bash
 cd backend
-python -m venv .venv
-.venv/Scripts/pip install -r requirements.txt     # Linux/macOS: .venv/bin/pip
-.venv/Scripts/alembic upgrade head
-.venv/Scripts/python -m app.scripts.seed
-.venv/Scripts/uvicorn app.main:app --reload
-.venv/Scripts/rq worker ingest topics reports      # worker, in another terminal
+.venv/Scripts/uvicorn app.main:app --reload       # Linux/macOS: .venv/bin/uvicorn
+.venv/Scripts/rq worker ingest topics reports      # worker, in another terminal (WSL on Windows)
 ```
 
 ```bash

@@ -142,3 +142,80 @@ All use the password you set in `SEED_DEMO_PASSWORD`.
 - Create a feature branch from `dev`, e.g. `git switch dev && git pull && git switch -c feat/my-change`.
 - Open a pull request into `dev`, get one review, CI must pass.
 - Never commit `.env`, data files or model files.
+
+## 9. Run without Docker
+
+For machines where Docker is not wanted. You need three things running locally: PostgreSQL 16
+**with the pgvector extension**, Redis, and (for Q&A) Ollama. The one step people get stuck on
+is pgvector: it is a C extension, not a `pip install`, so it must match your Postgres build.
+
+### macOS and Ubuntu / Debian: one script
+
+```bash
+bash scripts/setup_local.sh --seed
+```
+
+It installs Postgres 16 and Redis (Homebrew or apt), gets pgvector (the apt package, or
+compiles it for Homebrew's Postgres), starts both services, creates `backend/.venv`, and then
+runs `scripts/setup_local_db.py`. Everything is safe to run again.
+
+### Windows
+
+1. **PostgreSQL 16**: the EDB installer from https://www.postgresql.org/download/windows/.
+   Remember the `postgres` password you choose.
+2. **pgvector**: needs "Desktop development with C++" from Visual Studio Build Tools. In the
+   **x64 Native Tools Command Prompt**, run as Administrator:
+
+   ```bat
+   set "PGROOT=C:\Program Files\PostgreSQL\16"
+   git clone --branch v0.8.0 https://github.com/pgvector/pgvector.git
+   cd pgvector
+   nmake /F Makefile.win
+   nmake /F Makefile.win install
+   ```
+3. **Redis**: Redis has no native Windows build. Use Memurai Developer (Redis-compatible,
+   https://www.memurai.com) or run `sudo apt install redis-server` inside WSL.
+4. **Database, migrations, demo users** (from the repo root, after creating `backend\.venv`
+   with `pip install -r requirements.txt`):
+
+   ```bat
+   backend\.venv\Scripts\python scripts\setup_local_db.py --admin-url postgresql://postgres:YOUR_PASSWORD@localhost:5432/postgres --seed
+   ```
+
+   The background worker (RQ) needs `fork`, which Windows does not have: run
+   `rq worker ingest topics reports` inside WSL, or use Docker for the worker only.
+
+### What `scripts/setup_local_db.py` does (any OS)
+
+Each step is skipped when it is already done, so run it again after pulling new code:
+
+| Step | Details |
+|---|---|
+| `.env` | Created from `.env.example` with `localhost` hosts and a random `JWT_SECRET`, only if there is no `.env` yet |
+| Role + database | From `DATABASE_URL` (default `koyla` / `koyla` / `koyla`); the role's password is kept in sync with `.env` |
+| pgvector | `CREATE EXTENSION IF NOT EXISTS vector`; if pgvector is missing it stops and says how to install it |
+| Migrations | `alembic upgrade head` |
+| Demo users | With `--seed` |
+| Redis | Checks that it answers; uploads stay "Uploaded" until it does |
+
+The superuser connection comes from `--admin-url`, or `PG_ADMIN_URL`, or
+`postgresql://postgres@localhost:5432/postgres`.
+
+### Start the app
+
+```bash
+cd backend
+.venv/bin/uvicorn app.main:app --reload             # Windows: .venv\Scripts\uvicorn
+.venv/bin/rq worker ingest topics reports           # another terminal (WSL on Windows)
+cd ../frontend && npm install && npm run dev        # another terminal
+```
+
+For Q&A, install Ollama from https://ollama.com and pull the models:
+`ollama pull bge-m3` and `ollama pull qwen2.5:3b-instruct`.
+
+| Problem | Fix |
+|---|---|
+| `pgvector is not installed in this Postgres` | Install it for the **same** Postgres version the server runs (see above) |
+| `Cannot connect to Postgres as admin` | Start Postgres; pass `--admin-url` with a superuser and its password |
+| `password authentication failed for user "koyla"` | Re-run the script: it resets the role's password to the one in `.env` |
+| Port 5432 already used by another Postgres | Point `DATABASE_URL` and `--admin-url` at that server, or stop it |
