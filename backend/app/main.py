@@ -12,6 +12,7 @@ from app.api import (
     report_drafts,
     reports,
     review,
+    similar_pq,
     topics,
     users,
 )
@@ -49,6 +50,7 @@ app.include_router(report_drafts.router)  # before /reports/{id} routes
 app.include_router(reports.router)
 app.include_router(pq_replies.router)
 app.include_router(pq_replies.export_router)
+app.include_router(similar_pq.router)
 app.include_router(topics.router)
 app.include_router(dashboard.router)
 app.include_router(metrics.router)
