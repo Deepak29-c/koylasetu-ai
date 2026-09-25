@@ -120,6 +120,45 @@ All use the password you set in `SEED_DEMO_PASSWORD`.
 | See API errors | `docker compose logs -f api` (or `worker`, `web`) |
 | Wipe the database and start fresh | `docker compose down -v`, then start and seed again |
 | Backend tests (needs Python 3.11) | `cd backend`, create a venv, `pip install -r requirements.txt`, `pytest -q` |
+| Frontend tests (needs Node.js 22.18+, no browser) | `cd frontend`, `npm ci`, `npm test` |
+| Save or restore the demo data | See [Demo snapshot](#6a-demo-snapshot) |
+
+## 6a. Demo snapshot
+
+Reading scanned documents (OCR) takes minutes per document on a laptop. So that a demo never
+waits on it, save the database and the uploaded files once everything is processed, and put
+them back just before the demo.
+
+1. Start the stack (`docker compose up -d`), load and upload the demo documents, and wait until
+   every one shows **Processed** on Documents (try a few questions on Ask too).
+2. Make a snapshot:
+
+   | Shell | Command |
+   |---|---|
+   | Git Bash, macOS, Linux | `bash scripts/db_snapshot.sh create demo` |
+   | PowerShell | `powershell -ExecutionPolicy Bypass -File scripts\db_snapshot.ps1 create demo` |
+
+   This writes `data/snapshots/demo.dump` (the whole database, `pg_dump` custom format) and
+   `data/snapshots/demo.files.tar.gz` (the files volume: uploaded originals and page images).
+   Leave out the name to get `demo-<date>-<time>`. Everything under `data/` except
+   `sources.csv` is kept out of version control, so snapshots stay on this machine; copy the
+   two files to take a demo to another laptop.
+3. Before the demo, restore it:
+
+   | Shell | Command |
+   |---|---|
+   | Git Bash, macOS, Linux | `bash scripts/db_snapshot.sh restore demo` |
+   | PowerShell | `powershell -ExecutionPolicy Bypass -File scripts\db_snapshot.ps1 restore demo` |
+
+   It asks you to type `yes`, because it **replaces** the database and every uploaded file
+   (add `--yes`, or `-Yes` in PowerShell, to skip the question). The api and worker containers
+   are stopped during the restore and started again afterwards. The api applies any newer
+   database migrations when it starts, so an older snapshot still works after updating the code.
+
+`list` shows the saved snapshots. The scripts need the `koyla-db` container running and the
+files volume that `docker compose up` creates; other container or volume names can be set with
+`DB_CONTAINER`, `API_CONTAINER`, `WORKER_CONTAINER` and `FILES_VOLUME`. They cover the Docker
+setup only: the Windows one-file launcher (section 8a) keeps its database in `.localdev\`.
 
 ## 7. Common problems
 
