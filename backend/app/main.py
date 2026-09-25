@@ -14,6 +14,7 @@ from app.api import (
     topics,
     users,
 )
+from app.core import errors
 from app.core.config import get_settings
 
 app = FastAPI(
@@ -21,6 +22,10 @@ app = FastAPI(
     description="Verified AI reporting & parliamentary-reply assistant for CMPDI / CIL",
     version="0.1.0",
 )
+
+# First, so it ends up inside CORSMiddleware: an unhandled 500 still gets CORS headers and
+# the browser shows the real error instead of "cannot reach the server" (#69).
+errors.install(app)
 
 app.add_middleware(
     CORSMiddleware,

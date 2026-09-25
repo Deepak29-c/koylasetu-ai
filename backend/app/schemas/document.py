@@ -2,9 +2,10 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 from app.models.enums import DocType, DocumentStatus, FactStatus, Metric, PeriodType
+from app.services import failures
 
 
 class DocumentOut(BaseModel):
@@ -21,11 +22,37 @@ class DocumentOut(BaseModel):
     mime_type: str
     size_bytes: int
     status: DocumentStatus
-    error_message: str | None
     page_count: int | None
     pages_done: int
     source_url: str | None
     created_at: datetime
+    # Read from the row but never sent: the raw exception text and the server path (#70).
+    error_message: str | None = Field(default=None, exclude=True)
+    file_path: str | None = Field(default=None, exclude=True)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def file_missing(self) -> bool:
+        """The original file is no longer on disk, so its pages cannot be shown (#69). The
+        list says so before anyone clicks; processed text and figures are unaffected."""
+        return self.file_path is not None and failures.original_is_missing(self.file_path)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def failure_reason(self) -> failures.FailureReason | None:
+        """Why processing failed, as a code the frontend shows in the user's language. A
+        missing original is reported whatever the status, so the fix (upload it again) is
+        visible on the list."""
+        if self.status == DocumentStatus.FAILED:
+            return failures.reason_from_record(self.error_message) or "unknown"
+        return "file_missing" if self.file_missing else None
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def failure_message(self) -> str | None:
+        """The same reason as a plain English sentence, for API clients."""
+        reason = self.failure_reason
+        return failures.MESSAGES[reason] if reason else None
 
 
 class ChunkOut(BaseModel):
