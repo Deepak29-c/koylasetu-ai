@@ -77,6 +77,38 @@ export type PageData = {
   tables: { id: string; table_title: string | null; bbox: number[] | null; rows_json: string[][] }[];
 };
 
+export type AuditLogRow = {
+  id: string;
+  created_at: string;
+  user: { id: string; name: string; email: string } | null;
+  action: string;
+  entity: string | null;
+  entity_id: string | null;
+  details_json: Record<string, unknown> | null;
+  ip: string | null;
+};
+
+export type AuditFilters = {
+  action?: string;
+  entity?: string;
+  user_email?: string;
+  from_date?: string;
+  to_date?: string;
+};
+
+export function listAuditLog(filters: AuditFilters): Promise<AuditLogRow[]> {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value) params.set(key, value);
+  }
+  const qs = params.toString();
+  return api<AuditLogRow[]>(`/audit${qs ? `?${qs}` : ""}`);
+}
+
+export function listAuditActions(): Promise<string[]> {
+  return api<string[]>("/audit/actions");
+}
+
 export class ApiError extends Error {
   constructor(
     public status: number,

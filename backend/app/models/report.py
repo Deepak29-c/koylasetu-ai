@@ -13,11 +13,12 @@ from sqlalchemy import (
     UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Entity, str_enum
 from app.models.document import EMBED_DIM
 from app.models.enums import House, QaRoute, QuestionType, ReportStatus, ReportType
+from app.models.org import User
 
 
 class ParliamentQuestion(Entity):
@@ -130,3 +131,5 @@ class AuditLog(Entity):
     entity_id: Mapped[str | None] = mapped_column(String(64))
     details_json: Mapped[dict | None] = mapped_column(JSONB)
     ip: Mapped[str | None] = mapped_column(String(64))
+
+    user: Mapped[User | None] = relationship(lazy="joined")
