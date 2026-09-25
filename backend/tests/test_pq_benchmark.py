@@ -27,7 +27,8 @@ def test_known_entry_matches_the_official_pdf():
     entries, _ = check.check_file(check.DEFAULT_PATH)
     e = next(e for e in entries if e["id"] == "LS-2019-11-27-U1446")
     assert e["house"] == "LS" and e["date"] == "2019-11-27" and e["topic"] == "auction"
-    assert {"value": 145.58, "unit": "MT"} in e["expected_numbers"]
+    imports = {"value": 145.58, "unit": "MT", "label": "coal imported 2019-20 up to 31.10.2019"}
+    assert imports in e["expected_numbers"]
     assert "the total quantity of coal imported was 145.58 MT (provisional)" in e["official_answer"]
 
 
@@ -40,8 +41,13 @@ def test_known_entry_matches_the_official_pdf():
         (0.66, "4.838 0.660"),
         (50.0, "total dispatch of 50.00 MT"),
         (-0.382, "1,308 -0.382 The sales"),
+        (-2.5, "growth of −2.5 %"),
         (730.873, "is 730.873 Million Tonne."),
         (1085.0, "1085.00# Domestic"),
+        (1313, "for FSA sales Rs.1,313 per tonne"),
+        (2000, "costs Rs.2,000"),
+        (1325, "about 1192-1325 Million Tonnes"),  # end of a range
+        (10, "(10%)"),
     ],
 )
 def test_number_found(value, text):
@@ -57,6 +63,11 @@ def test_number_found(value, text):
         (730.87, "730.873 MT"),
         (4200, "42,000 tonnes"),
         (6, "6.563 MT"),
+        (10, "G10 98.175"),  # grade label, not a figure
+        (4, "Wash-IV 45.993 Mty4"),
+        (0.382, "Decrease -0.382"),  # sign must match
+        (-0.382, "Decrease 0.382"),
+        (5, "version 1.5"),
     ],
 )
 def test_number_not_found(value, text):
@@ -90,3 +101,37 @@ def test_bad_entries_are_reported(tmp_path):
         "line 5: duplicate id LS-2020-03-04-U2174",
         "line 6: not valid JSON (Expecting property name enclosed in double quotes)",
     ]
+
+
+@pytest.mark.parametrize(
+    "num, problem",
+    [
+        ({"value": 1, "note": "x"}, "expected_numbers[0] needs value and unit"),
+        ({"foo": 1, "bar": 2}, "expected_numbers[0] needs value and unit"),
+        ({"value": 42.43, "unit": "MT", "note": "x"}, "expected_numbers[0] has unknown key 'note'"),
+        ({"value": 42.43, "unit": "Mty"}, "expected_numbers[0].unit 'Mty' is not one of the"),
+        ({"value": 42.43, "unit": "MT", "label": " "}, "expected_numbers[0].label should be"),
+        ({"value": "42.43", "unit": "MT"}, "expected_numbers[0].value should be a number"),
+    ],
+)
+def test_bad_expected_numbers_are_reported_not_crashing(num, problem):
+    entry = {
+        "id": "x",
+        "house": "LS",
+        "date": "2020-03-04",
+        "question": "q",
+        "official_answer": "pithead coal stock with CIL was 42.43 MT",
+        "expected_numbers": [num],
+        "topic": "coal stock",
+    }
+    problems = check.check_entry(entry)
+    assert len(problems) == 1 and problems[0].startswith(problem)
+
+
+def test_label_is_optional_and_units_are_controlled():
+    entries, _ = check.check_file(check.DEFAULT_PATH)
+    nums = [num for e in entries for num in e["expected_numbers"]]
+    assert {num["unit"] for num in nums} <= check.UNITS
+    assert any("label" in num for num in nums) and any("label" not in num for num in nums)
+    u1297 = next(e for e in entries if e["id"] == "LS-2022-02-09-U1297")
+    assert all("label" in num for num in u1297["expected_numbers"])

@@ -72,11 +72,15 @@ facts), built in step 3.
   of a document processed before this existed
 
 **Benchmark set** (guide 15.2, issue #16): `eval/pq_benchmark.jsonl` holds 34 real Lok Sabha
-coal questions (2018-2022) with the official written answer, the key figures in it (value +
-unit, 185 in all), a topic label and the coal.gov.in PDF it came from. Only PDFs with a clean
-text layer were used; scanned ones and ones with a garbled OCR layer were skipped.
-`python scripts/check_benchmark.py` checks the format `eval/run_eval.py` expects and that every
-expected figure really appears in its official answer (also run by pytest).
+coal questions (2018-2022) with the official written answer, the key figures in it (183 in
+all: value, unit and, for figures from tables or easy to confuse, an optional `label`), a topic
+and the coal.gov.in PDF it came from. Units come from one fixed list (MT, MTPA, MT/day,
+thousand tonnes, tonnes/year, tonnes/day, rakes/day, BU, MW, GW, %, Rs crore, Rs/tonne, days,
+years, count). Only PDFs with a clean text layer were used; scanned ones and ones with a
+garbled OCR layer were skipped. `python scripts/check_benchmark.py` (also run by pytest)
+checks the format `eval/run_eval.py` expects, the units, and that every expected value occurs
+in its official answer as a standalone number with the right sign. It does not check the unit
+or which cell was meant.
 
 **Setup (step 0):**
 - Docker Compose for all 6 services

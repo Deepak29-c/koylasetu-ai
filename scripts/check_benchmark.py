@@ -2,11 +2,18 @@
 
 Every line must be one JSON object in the format eval/run_eval.py reads: id, house, date,
 question, official_answer, expected_numbers [{"value", "unit"}], topic. Extra fields
-(question_no, title, source_url, ...) are allowed.
+(question_no, title, source_url, ...) are allowed. Each expected number may also have an
+optional "label" saying which figure it is (e.g. "CIL supply to Andhra Pradesh 2021-22"),
+used where the figure comes from a table or could be confused with another one.
 
-It also checks that every expected number really appears in the official answer, so no
-figure in the benchmark is made up: 42871 matches "42,871" (and Indian "4,28,710" style
-grouping), 13.2 matches "13.20", and 12 does not match inside "112" or "12.5".
+Units must come from UNITS below, so the runner can compare like with like.
+
+For every expected number it checks that the value occurs in the official answer as a
+standalone number with the right sign: 42871 matches "42,871" (and Indian "4,28,710"
+grouping), 13.2 matches "13.20", 1313 matches "Rs.1,313", -0.382 matches "-0.382" but not
+"0.382"; 12 does not match inside "112", "12.5", "G12" or "-12". A number at the end of a
+range ("1192-1325") counts. It does NOT check the unit or that the right cell or sentence
+was meant: that is what the labels and the hand spot-checks are for.
 
 Usage: python scripts/check_benchmark.py [path]   (exit code 1 if anything is wrong)
 """
@@ -29,21 +36,79 @@ REQUIRED = {
     "topic": str,
 }
 HOUSES = {"LS", "RS"}
+NUMBER_KEYS = {"value", "unit", "label"}
+# The controlled vocabulary of units. MT = million tonnes, MTPA = million tonnes per annum
+# (capacities and annual linkages), BU = billion units, count = a number of things (mines,
+# agreements, FIRs ...; the label says what).
+UNITS = {
+    "MT",
+    "MTPA",
+    "MT/day",
+    "thousand tonnes",
+    "tonnes/year",
+    "tonnes/day",
+    "rakes/day",
+    "BU",
+    "MW",
+    "GW",
+    "%",
+    "Rs crore",
+    "Rs/tonne",
+    "days",
+    "years",
+    "count",
+}
+MINUS = "-−"
 
 
 def number_pattern(value: float | int) -> re.Pattern:
-    """Regex for a number as it may be printed: digit groups with optional commas (Western
-    or Indian grouping), trailing zeros after the decimal point allowed, not part of a
-    longer number."""
+    """Regex for the digits of abs(value) as they may be printed: optional commas between
+    digits (Western or Indian grouping), trailing zeros after the decimal point allowed,
+    not followed by more digits. What comes before is checked in number_in_text."""
     text = f"{abs(value):f}".rstrip("0").rstrip(".") if isinstance(value, float) else str(value)
     whole, _, frac = text.lstrip("-").partition(".")
     digits = ",?".join(whole)  # a comma may sit between any two digits
     tail = rf"\.{frac}0*" if frac else r"(?:\.0+)?"
-    return re.compile(rf"(?<![\d.,]){digits}{tail}(?![\d]|[.,]\d)")
+    return re.compile(rf"(?<!\d){digits}{tail}(?![\d]|[.,]\d)")
+
+
+def _standalone_with_sign(text: str, start: int, negative: bool) -> bool:
+    before = text[start - 1] if start else " "
+    if before in ".,":
+        # "Rs.1,313" is fine; ".5" or "1,5" is part of another number
+        return text[max(0, start - 3) : start].lower() == "rs." and not negative
+    if before.isalpha():  # a label like "G10" or "Wash-IV"
+        return False
+    if before in MINUS:
+        # a minus sign only if it does not join two words/numbers ("9-10", "2014-15")
+        is_sign = start < 2 or not text[start - 2].isalnum()
+        return is_sign == negative
+    return not negative
 
 
 def number_in_text(value: float | int, text: str) -> bool:
-    return bool(number_pattern(value).search(text))
+    """True if value occurs in text as a standalone number with the same sign."""
+    return any(
+        _standalone_with_sign(text, m.start(), value < 0)
+        for m in number_pattern(value).finditer(text)
+    )
+
+
+def check_number(i: int, num: object, answer: str) -> list[str]:
+    where = f"expected_numbers[{i}]"
+    if not isinstance(num, dict) or not {"value", "unit"} <= set(num):
+        return [f"{where} needs value and unit"]
+    errors = [f"{where} has unknown key {k!r}" for k in sorted(set(num) - NUMBER_KEYS)]
+    value, unit = num["value"], num["unit"]
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        errors.append(f"{where}.value should be a number")
+    elif unit not in UNITS:
+        errors.append(f"{where}.unit {unit!r} is not one of the allowed units")
+    elif not number_in_text(value, answer):
+        errors.append(f"{where} {value} {unit} is not in official_answer")
+    if "label" in num and (not isinstance(num["label"], str) or not num["label"].strip()):
+        errors.append(f"{where}.label should be a non-empty string")
+    return errors
 
 
 def check_entry(entry: object) -> list[str]:
@@ -67,16 +132,7 @@ def check_entry(entry: object) -> list[str]:
     except ValueError:
         errors.append(f"date should be YYYY-MM-DD, got {entry['date']!r}")
     for i, num in enumerate(entry["expected_numbers"]):
-        if not isinstance(num, dict) or set(num) < {"value", "unit"}:
-            errors.append(f"expected_numbers[{i}] needs value and unit")
-            continue
-        value, unit = num["value"], num["unit"]
-        if isinstance(value, bool) or not isinstance(value, (int, float)):
-            errors.append(f"expected_numbers[{i}].value should be a number")
-        elif not isinstance(unit, str) or not unit.strip():
-            errors.append(f"expected_numbers[{i}].unit should be a non-empty string")
-        elif not number_in_text(value, entry["official_answer"]):
-            errors.append(f"expected_numbers[{i}] {value} {unit} is not in official_answer")
+        errors += check_number(i, num, entry["official_answer"])
     return errors
 
 
