@@ -164,6 +164,33 @@ export type ReportVersionRow = {
   created_at: string;
 };
 
+export type ReportsPanel = {
+  my_drafts: number;
+  returned_to_me: number;
+  awaiting_approval: number;
+  due_soon: number;
+  overdue: number;
+};
+
+export type DocumentsPanel = {
+  processing: number;
+  needs_review: number;
+  failed: number;
+  processed_this_month: number;
+};
+
+export type ReviewPanel = { pending_facts: number; flagged_facts: number };
+
+export type ActivityPanel = { questions_this_month: number };
+
+/** Panels the signed-in person has no permission for come back as null, not zero. */
+export type DashboardSummary = {
+  reports: ReportsPanel | null;
+  documents: DocumentsPanel | null;
+  review: ReviewPanel | null;
+  activity: ActivityPanel | null;
+};
+
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -415,6 +442,10 @@ export async function downloadFile(path: string, filename: string, retry = true)
 
 export function exportReport(id: string, format: "docx" | "pdf"): Promise<void> {
   return downloadFile(`/reports/${id}/export?format=${format}`, `pq-reply-${id.slice(0, 8)}.${format}`);
+}
+
+export function getDashboardSummary(): Promise<DashboardSummary> {
+  return api<DashboardSummary>("/dashboard/summary");
 }
 
 export async function login(email: string, password: string): Promise<void> {
