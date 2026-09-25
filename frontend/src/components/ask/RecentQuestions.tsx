@@ -40,7 +40,7 @@ export default function RecentQuestions({
       ) : rows.length === 0 ? (
         <EmptyState compact icon={<MessageSquareText />} title={t("qa.noHistory")} />
       ) : (
-        <ul className="-mx-2 space-y-1">
+        <ul className="-mx-2 max-h-[60vh] overflow-y-auto scroll-quiet space-y-1">
           {rows.map((h) => {
             const current = h.id === currentId;
             return (

@@ -67,7 +67,7 @@ export default function DecidedList({
       <ul
         ref={listRef}
         aria-label={t("reviewTabDecided")}
-        className="max-h-[40vh] space-y-2 overflow-y-auto p-3 xl:max-h-[70vh]"
+        className="max-h-[40vh] space-y-2 overflow-y-auto scroll-quiet p-3 xl:max-h-[70vh]"
       >
         {items.map((item) => {
           const f = item.fact;

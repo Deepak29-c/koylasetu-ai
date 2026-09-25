@@ -233,7 +233,7 @@ export function LogoMark({ className }: { className?: string }) {
 function SideNav({ me, current, collapsed }: { me: Me | null; current: string | null; collapsed: boolean }) {
   const { t } = useT();
   return (
-    <nav aria-label={t("nav.main")} className="flex-1 overflow-x-hidden overflow-y-auto px-3 py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+    <nav aria-label={t("nav.main")} className="flex-1 overflow-x-hidden overflow-y-auto scroll-quiet px-3 py-1">
       {(me ? visibleNav(me.permissions) : []).map((g, gi) => (
         <div key={g.label ?? "main"} className={cn(gi > 0 && "mt-2.5")}>
           {g.label && <GroupLabel label={t(g.label)} collapsed={collapsed} />}
