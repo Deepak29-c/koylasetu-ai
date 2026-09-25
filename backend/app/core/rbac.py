@@ -23,6 +23,7 @@ class Permission(StrEnum):
     EXPORT_REPORTS = "export_reports"
     VIEW_TOPICS = "view_topics"
     VIEW_AUDIT = "view_audit"
+    VIEW_METRICS = "view_metrics"  # accuracy, time saved, automation %, usage (guide 12)
 
 
 R, P = Role, Permission
@@ -39,6 +40,7 @@ PERMISSIONS: dict[Permission, frozenset[Role]] = {
     P.EXPORT_REPORTS: frozenset({R.ADMIN, R.ANALYST, R.APPROVER, R.VIEWER}),
     P.VIEW_TOPICS: frozenset(Role),
     P.VIEW_AUDIT: frozenset({R.ADMIN, R.APPROVER}),
+    P.VIEW_METRICS: frozenset({R.ADMIN, R.APPROVER}),
 }
 
 

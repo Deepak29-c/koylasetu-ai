@@ -58,18 +58,35 @@ function query(params: Record<string, string | undefined>): string {
   return s ? `?${s}` : "";
 }
 
-export function getWordCloud(filters: WordCloudFilters): Promise<WordCloud> {
-  return api<WordCloud>(`/topics/wordcloud${query(filters)}`);
+export function getWordCloud(filters: WordCloudFilters, signal?: AbortSignal): Promise<WordCloud> {
+  return api<WordCloud>(`/topics/wordcloud${query(filters)}`, { signal });
 }
 
-export function listTopics(): Promise<TopicRun> {
-  return api<TopicRun>("/topics");
+export function listTopics(signal?: AbortSignal): Promise<TopicRun> {
+  return api<TopicRun>("/topics", { signal });
 }
 
-export function listTopicQuestions(topicId: string, year?: string): Promise<TopicQuestion[]> {
-  return api<TopicQuestion[]>(`/topics/${topicId}/questions${query({ year })}`);
+export function listTopicQuestions(topicId: string, year?: string, signal?: AbortSignal): Promise<TopicQuestion[]> {
+  return api<TopicQuestion[]>(`/topics/${topicId}/questions${query({ year })}`, { signal });
 }
 
 export function rerunTopics(): Promise<{ queued: boolean }> {
   return api<{ queued: boolean }>("/topics/refresh", { method: "POST" });
+}
+
+/** Words of a keyword or text, lower-cased, for matching a word picked in the cloud. */
+function words(text: string): string[] {
+  return text.toLowerCase().split(/[^\p{L}\p{M}\p{N}]+/u).filter(Boolean);
+}
+
+/** True when any keyword is the word or contains it as a whole word. */
+export function keywordsInclude(keywords: string[], word: string): boolean {
+  const w = word.toLowerCase();
+  return keywords.some((k) => k.toLowerCase() === w || words(k).includes(w));
+}
+
+/** True when the question's keywords, subject or text use the word. */
+export function questionUses(q: TopicQuestion, word: string): boolean {
+  const w = word.toLowerCase();
+  return keywordsInclude(q.keywords, w) || words(`${q.subject ?? ""} ${q.question_text}`).includes(w);
 }
