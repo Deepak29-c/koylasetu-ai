@@ -230,6 +230,10 @@ export type ReportVersionRow = {
   version: number;
   content_json: { text?: string };
   editor: { id: string; name: string; email: string };
+  // What happened, as a code the page words in the reader's language (#71), and the human
+  // comment exactly as typed. change_note is the old stored sentence, kept for history.
+  change_kind: string | null;
+  change_comment: string | null;
   change_note: string | null;
   created_at: string;
 };

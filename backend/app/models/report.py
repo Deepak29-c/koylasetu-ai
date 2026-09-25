@@ -74,7 +74,12 @@ class ReportVersion(Entity):
     version: Mapped[int] = mapped_column(Integer)
     content_json: Mapped[dict] = mapped_column(JSONB)
     edited_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    # Before #71 this held an English sentence ("Created", "Returned: <comment>"). New rows
+    # leave it empty and use change_kind + change_comment; old rows are read through
+    # app.services.report_history so nothing already recorded is lost.
     change_note: Mapped[str | None] = mapped_column(Text)
+    change_kind: Mapped[str | None] = mapped_column(String(32))
+    change_comment: Mapped[str | None] = mapped_column(Text)
 
     editor: Mapped[User] = relationship(foreign_keys=[edited_by], lazy="joined")
 

@@ -30,7 +30,7 @@ from app.models import (
     ReportVersion,
     User,
 )
-from app.models.enums import ReportStatus, ReportType
+from app.models.enums import ReportChangeKind, ReportStatus, ReportType
 from app.schemas.pq_reply import PqDraftIn, PqDraftOut
 from app.services import audit, pq_reply, report_export
 
@@ -140,7 +140,7 @@ def create_draft(
             version=1,
             content_json=content,
             edited_by=user.id,
-            change_note="First draft generated from the question",
+            change_kind=ReportChangeKind.DRAFTED_FROM_QUESTION,
         )
     )
     for link in draft.links:

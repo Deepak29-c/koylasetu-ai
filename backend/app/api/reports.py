@@ -8,7 +8,7 @@ from app.core.db import get_db
 from app.core.deps import get_current_user, require, scope_to_user
 from app.core.rbac import Permission, has_permission
 from app.models import Report, ReportVersion, User
-from app.models.enums import ReportStatus, ReportType
+from app.models.enums import ReportChangeKind, ReportStatus, ReportType
 from app.schemas.report import (
     RejectIn,
     ReportCreateIn,
@@ -78,7 +78,7 @@ def create_report(
             version=1,
             content_json=body.content_json,
             edited_by=user.id,
-            change_note="Created",
+            change_kind=ReportChangeKind.CREATED,
         )
     )
     audit.record(
@@ -154,7 +154,8 @@ def update_report(
                 version=_next_version(db, report.id),
                 content_json=body.content_json,
                 edited_by=user.id,
-                change_note=body.change_note,
+                change_kind=ReportChangeKind.EDITED,
+                change_comment=body.change_note,
             )
         )
     audit.record(
@@ -206,7 +207,7 @@ def approve_report(
             version=_next_version(db, report.id),
             content_json=report.content_json,
             edited_by=user.id,
-            change_note="Approved",
+            change_kind=ReportChangeKind.APPROVED,
         )
     )
     audit.record(
@@ -238,7 +239,8 @@ def reject_report(
             version=_next_version(db, report.id),
             content_json=report.content_json,
             edited_by=user.id,
-            change_note=f"Returned: {body.comment}",
+            change_kind=ReportChangeKind.RETURNED,
+            change_comment=body.comment,  # the approver's words, shown exactly as typed
         )
     )
     audit.record(
