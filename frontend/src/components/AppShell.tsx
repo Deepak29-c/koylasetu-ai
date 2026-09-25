@@ -32,6 +32,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   const nav = [
     { href: "/", label: t("home") },
+    { href: "/ask", label: t("ask") },
     { href: "/upload", label: t("upload") },
     { href: "/documents", label: t("documents") },
   ];

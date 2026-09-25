@@ -163,12 +163,12 @@ def _read_sheets(path: Path, mime: str) -> dict[str, list[list[str]]]:
 
 
 def parse_sheets(path: Path, mime: str) -> Iterator[PageResult]:
-    """Every sheet is one table (guide 7.1 step 7), plus row text for keyword search."""
+    """Every sheet is one table (guide 7.1 step 7). Its text for search comes from the table
+    chunks (worker.embed.table_chunks), so no separate row text is added here."""
     for index, (name, rows) in enumerate(_read_sheets(path, mime).items()):
         rows = [r for r in rows if any(r)]
-        blocks = [Block(" | ".join(c for c in row if c)) for row in rows]
         tables = [Table(rows, title=str(name))] if rows else []
-        yield PageResult(index + 1, has_text_layer=True, blocks=blocks, tables=tables)
+        yield PageResult(index + 1, has_text_layer=True, tables=tables)
 
 
 # --- Word --------------------------------------------------------------------------------------
