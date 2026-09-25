@@ -37,7 +37,7 @@ export default function Stat({ label, value, icon, tone = "brand", note, href, o
           {icon}
         </span>
       )}
-      <span className="min-w-0 flex-1">
+      <span className="w-full min-w-0 flex-1">
         <span className="block text-xs font-medium text-muted">{label}</span>
         <span className="mt-0.5 block text-2xl leading-8 font-semibold text-strong tabular-nums">{value}</span>
         {note && <span className="mt-0.5 block text-xs text-subtle">{note}</span>}
@@ -45,7 +45,8 @@ export default function Stat({ label, value, icon, tone = "brand", note, href, o
     </>
   );
   const cls = cn(
-    "flex items-center gap-3.5 rounded-card border border-line bg-surface p-4 text-left shadow-card",
+    // Two tiles share a row on a phone, so the icon sits above the text there.
+    "flex flex-col items-start gap-2.5 rounded-card border border-line bg-surface p-4 text-left shadow-card sm:flex-row sm:items-center sm:gap-3.5",
     (href || onClick) && "transition-colors hover:border-brand/40 hover:bg-brand-tint",
     selected && "border-brand ring-2 ring-brand/20",
     className,

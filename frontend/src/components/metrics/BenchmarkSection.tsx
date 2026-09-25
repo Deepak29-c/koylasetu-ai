@@ -58,7 +58,7 @@ export default function BenchmarkSection({ benchmark }: { benchmark: MetricsOut[
         subtitle={`${t("metrics.benchmarkSub")} · ${t("metrics.benchmarkRunOn")} ${formatDate(benchmark.run_date, locale)}`}
         icon={<FlaskConical />}
       />
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-5">
         {HEADLINES.map((h) => (
           <Stat
             key={h.key}

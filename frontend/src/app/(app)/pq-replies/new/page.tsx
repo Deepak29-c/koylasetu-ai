@@ -9,6 +9,7 @@ import PartsPreview from "@/components/drafts/PartsPreview";
 import PqDraftView from "@/components/drafts/PqDraftView";
 import { QuestionImportButton, QuestionImportNotices, useQuestionImport } from "@/components/drafts/QuestionImport";
 import { useDraftRequest } from "@/components/drafts/useDraftRequest";
+import SimilarQuestions from "@/components/similar/SimilarQuestions";
 import Alert from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
@@ -179,6 +180,9 @@ export default function NewPqReplyPage() {
           </div>
         </fieldset>
       </form>
+
+      {/* Results open in a new tab: the form above is not saved until a draft is made. */}
+      <SimilarQuestions text={`${form.subject ?? ""} ${form.question_text}`} newTab />
 
       {job.busy && job.startedAt !== null && (
         <DraftProgress

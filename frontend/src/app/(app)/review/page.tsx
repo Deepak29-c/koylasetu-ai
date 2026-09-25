@@ -56,6 +56,13 @@ export default function ReviewPage() {
   const [decidedId, setDecidedId] = useState<string | null>(null);
   const [decidedError, setDecidedError] = useState<string | null>(null);
   const detailRef = useRef<ReviewDetailHandle>(null);
+  const detailBox = useRef<HTMLDivElement>(null);
+
+  // Below xl the detail sits under the list, so a tap on a phone brings it into view.
+  function showDetailBelowXl() {
+    if (window.matchMedia("(min-width: 1280px)").matches) return;
+    requestAnimationFrame(() => detailBox.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  }
   const allowed = can(me, "review_facts");
 
   const load = useCallback(
@@ -257,16 +264,16 @@ export default function ReviewPage() {
       )}
 
       {stats ? (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
           {stats.map(({ id, ...s }) => (
             <Stat key={id} {...s} />
           ))}
         </div>
       ) : (
         !error && (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-hidden>
+          <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4" aria-hidden>
             {Array.from({ length: 4 }, (_, i) => (
-              <Skeleton key={i} className="h-[74px] rounded-card" />
+              <Skeleton key={i} className="h-28 rounded-card sm:h-[74px]" />
             ))}
           </div>
         )
@@ -310,17 +317,22 @@ export default function ReviewPage() {
                 <DecidedList
                   items={decidedList}
                   selectedId={selectedDecided.fact.id}
-                  onSelect={setDecidedId}
+                  onSelect={(id) => {
+                    setDecidedId(id);
+                    showDetailBelowXl();
+                  }}
                   footer={<ShortcutsHint />}
                 />
               </div>
-              <ReviewDetail
-                ref={detailRef}
-                key={`${selectedDecided.fact.id}-${selectedDecided.decided_at}`}
-                item={selectedDecided}
-                earlier={selectedDecided}
-                onDone={changed}
-              />
+              <div ref={detailBox} className="min-w-0 scroll-mt-20">
+                <ReviewDetail
+                  ref={detailRef}
+                  key={`${selectedDecided.fact.id}-${selectedDecided.decided_at}`}
+                  item={selectedDecided}
+                  earlier={selectedDecided}
+                  onDone={changed}
+                />
+              </div>
             </div>
           )}
         </>
@@ -346,16 +358,21 @@ export default function ReviewPage() {
               items={visible}
               total={items.length}
               selectedId={selected?.fact.id ?? null}
-              onSelect={setSelectedId}
+              onSelect={(id) => {
+                setSelectedId(id);
+                showDetailBelowXl();
+              }}
               filters={<ReviewFilters items={items} value={filters} onChange={setFilters} />}
               footer={<ShortcutsHint />}
             />
           </div>
-          {selected ? (
-            <ReviewDetail ref={detailRef} key={selected.fact.id} item={selected} onDone={done} />
-          ) : (
-            <EmptyState title={t("review.noMatches")} />
-          )}
+          <div ref={detailBox} className="min-w-0 scroll-mt-20">
+            {selected ? (
+              <ReviewDetail ref={detailRef} key={selected.fact.id} item={selected} onDone={done} />
+            ) : (
+              <EmptyState title={t("review.noMatches")} />
+            )}
+          </div>
         </div>
       )}
     </div>

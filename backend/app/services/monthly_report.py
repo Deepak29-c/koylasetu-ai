@@ -63,6 +63,10 @@ ROWS: list[tuple[str, str]] = [
 ]
 ROW_CODES = [code for code, _ in ROWS]
 TITLE = "MONTHLY REPORT: COAL PRODUCTION AND DESPATCH"
+SUMMARY_HEADING = "SUMMARY"
+REMARKS_HEADING = "REMARKS"
+# The last-year column is named after the month; this stands in for it when there is none.
+LAST_YEAR_COLUMN = "Same month last year (MT)"
 REMARK_THRESHOLD = 5.0  # % change that gets a remark (guide W5: "growth more than ±5%")
 MAX_REMARKS = 6
 MIN_BASE = 0.1  # MT; smaller bases give meaningless growth % (NEC: 0.01 -> 0.02 MT)
@@ -207,8 +211,8 @@ def _computed(value: float | None, *inputs: Cell) -> str:
     return fmt_value(value) + (UNVERIFIED_MARK if unverified else "")
 
 
-def columns(spec: TableSpec, month: str) -> list[str]:
-    last = f"{month_short(same_month_last_year(month))} (MT)"
+def columns(spec: TableSpec, month: str | None = None) -> list[str]:
+    last = f"{month_short(same_month_last_year(month))} (MT)" if month else LAST_YEAR_COLUMN
     if spec.target_metric:
         return [
             "Subsidiary",
@@ -524,8 +528,8 @@ def build_content(
         remarks = rule_remarks(tables, month)
         method = "rule"
 
-    sections.insert(0, section("summary", "SUMMARY", summary_lines(tables, month)))
-    sections.append(section("remarks", "REMARKS", remarks, removed_numbers=removed))
+    sections.insert(0, section("summary", SUMMARY_HEADING, summary_lines(tables, month)))
+    sections.append(section("remarks", REMARKS_HEADING, remarks, removed_numbers=removed))
     all_rows = [r for rows in tables.values() for r in rows]
     cells = [c for r in all_rows for c in (r.actual, r.last_year, r.target) if c is not None]
     content = {

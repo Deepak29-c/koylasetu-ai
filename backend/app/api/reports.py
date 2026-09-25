@@ -16,7 +16,7 @@ from app.schemas.report import (
     ReportUpdateIn,
     ReportVersionOut,
 )
-from app.services import audit
+from app.services import audit, similar_pq
 
 router = APIRouter(prefix="/reports", tags=["reports"])
 
@@ -210,6 +210,8 @@ def approve_report(
             change_kind=ReportChangeKind.APPROVED,
         )
     )
+    # So the approved reply is found by meaning, not only by its words (guide 10.2).
+    similar_pq.remember(db, report)
     audit.record(
         db, "approve_report", actor=user, entity="report", entity_id=report.id, request=request
     )

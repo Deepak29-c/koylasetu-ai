@@ -33,6 +33,7 @@ import {
   listAuditActions,
   listAuditLog,
 } from "@/lib/api";
+import { cn } from "@/lib/cn";
 import { errorText } from "@/lib/errors";
 import { formatDateTime } from "@/lib/format";
 import { useT } from "@/lib/i18n";
@@ -245,73 +246,127 @@ export default function AuditLogPage() {
           </div>
         ) : (
           <div aria-busy={refreshing || undefined} className={refreshing ? "opacity-60 transition-opacity" : undefined}>
-            <Table caption={t("auditLog")}>
-              <THead>
-                <TH>{t("auditWhen")}</TH>
-                <TH>{t("auditWho")}</TH>
-                <TH>{t("auditAction")}</TH>
-                <TH>{t("auditWhat")}</TH>
-                <TH>{t("auditIp")}</TH>
-                <TH align="right">
-                  <span className="sr-only">{t("auditDetails")}</span>
-                </TH>
-              </THead>
-              <tbody>
-                {rows.map((r) => {
-                  const href = entityHref(r);
-                  const entityText = r.entity ? entityLabel(t, r.entity) : null;
-                  return (
-                    <TR key={r.id} selected={open?.id === r.id}>
-                      <TD className="whitespace-nowrap tabular-nums text-muted">
+            <div className="hidden sm:block">
+              <Table caption={t("auditLog")}>
+                <THead>
+                  <TH>{t("auditWhen")}</TH>
+                  <TH>{t("auditWho")}</TH>
+                  <TH>{t("auditAction")}</TH>
+                  <TH>{t("auditWhat")}</TH>
+                  <TH>{t("auditIp")}</TH>
+                  <TH align="right">
+                    <span className="sr-only">{t("auditDetails")}</span>
+                  </TH>
+                </THead>
+                <tbody>
+                  {rows.map((r) => {
+                    const href = entityHref(r);
+                    const entityText = r.entity ? entityLabel(t, r.entity) : null;
+                    return (
+                      <TR key={r.id} selected={open?.id === r.id}>
+                        <TD className="whitespace-nowrap tabular-nums text-muted">
+                          {formatDateTime(r.created_at, locale)}
+                        </TD>
+                        <TD>
+                          {r.user ? (
+                            <>
+                              <span className="block font-medium text-strong">{r.user.name}</span>
+                              <span className="block text-xs text-subtle">{r.user.email}</span>
+                            </>
+                          ) : (
+                            <span className="text-subtle">{t("auditSystem")}</span>
+                          )}
+                        </TD>
+                        <TD>
+                          <Badge tone={actionTone(r.action)} dot title={r.action}>
+                            {actionLabel(t, r.action)}
+                          </Badge>
+                        </TD>
+                        <TD>
+                          {entityText ? (
+                            <span className="inline-flex flex-wrap items-center gap-2">
+                              {href ? (
+                                <Link href={href} className="font-medium text-brand hover:underline">
+                                  {entityText}
+                                </Link>
+                              ) : (
+                                <span>{entityText}</span>
+                              )}
+                              {r.entity_id && <MonoId>{r.entity_id.slice(0, 8)}</MonoId>}
+                            </span>
+                          ) : (
+                            <span className="text-subtle">–</span>
+                          )}
+                        </TD>
+                        <TD>{r.ip ? <MonoId>{r.ip}</MonoId> : <span className="text-subtle">–</span>}</TD>
+                        <TD align="right">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setOpen(r)}
+                            aria-label={`${t("audit.viewDetails")}: ${actionLabel(t, r.action)}, ${formatDateTime(r.created_at, locale)}`}
+                          >
+                            {t("auditDetails")}
+                          </Button>
+                        </TD>
+                      </TR>
+                    );
+                  })}
+                </tbody>
+              </Table>
+            </div>
+
+            <ul className="divide-y divide-line border-t border-line sm:hidden">
+              {rows.map((r) => {
+                const href = entityHref(r);
+                const entityText = r.entity ? entityLabel(t, r.entity) : null;
+                return (
+                  <li key={r.id} className={cn("space-y-2 px-5 py-4", open?.id === r.id && "bg-brand-tint")}>
+                    <div className="flex items-start justify-between gap-3">
+                      <Badge tone={actionTone(r.action)} dot title={r.action}>
+                        {actionLabel(t, r.action)}
+                      </Badge>
+                      <span className="text-xs whitespace-nowrap text-muted tabular-nums">
                         {formatDateTime(r.created_at, locale)}
-                      </TD>
-                      <TD>
-                        {r.user ? (
-                          <>
-                            <span className="block font-medium text-strong">{r.user.name}</span>
-                            <span className="block text-xs text-subtle">{r.user.email}</span>
-                          </>
+                      </span>
+                    </div>
+                    <div className="min-w-0 text-sm">
+                      {r.user ? (
+                        <>
+                          <span className="block font-medium text-strong">{r.user.name}</span>
+                          <span className="block truncate text-xs text-subtle">{r.user.email}</span>
+                        </>
+                      ) : (
+                        <span className="text-subtle">{t("auditSystem")}</span>
+                      )}
+                    </div>
+                    {entityText && (
+                      <div className="flex flex-wrap items-center gap-2 text-sm">
+                        {href ? (
+                          <Link href={href} className="font-medium text-brand hover:underline">
+                            {entityText}
+                          </Link>
                         ) : (
-                          <span className="text-subtle">{t("auditSystem")}</span>
+                          <span>{entityText}</span>
                         )}
-                      </TD>
-                      <TD>
-                        <Badge tone={actionTone(r.action)} dot title={r.action}>
-                          {actionLabel(t, r.action)}
-                        </Badge>
-                      </TD>
-                      <TD>
-                        {entityText ? (
-                          <span className="inline-flex flex-wrap items-center gap-2">
-                            {href ? (
-                              <Link href={href} className="font-medium text-brand hover:underline">
-                                {entityText}
-                              </Link>
-                            ) : (
-                              <span>{entityText}</span>
-                            )}
-                            {r.entity_id && <MonoId>{r.entity_id.slice(0, 8)}</MonoId>}
-                          </span>
-                        ) : (
-                          <span className="text-subtle">–</span>
-                        )}
-                      </TD>
-                      <TD>{r.ip ? <MonoId>{r.ip}</MonoId> : <span className="text-subtle">–</span>}</TD>
-                      <TD align="right">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setOpen(r)}
-                          aria-label={`${t("audit.viewDetails")}: ${actionLabel(t, r.action)}, ${formatDateTime(r.created_at, locale)}`}
-                        >
-                          {t("auditDetails")}
-                        </Button>
-                      </TD>
-                    </TR>
-                  );
-                })}
-              </tbody>
-            </Table>
+                        {r.entity_id && <MonoId>{r.entity_id.slice(0, 8)}</MonoId>}
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between gap-3">
+                      {r.ip ? <MonoId>{r.ip}</MonoId> : <span />}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setOpen(r)}
+                        aria-label={`${t("audit.viewDetails")}: ${actionLabel(t, r.action)}, ${formatDateTime(r.created_at, locale)}`}
+                      >
+                        {t("auditDetails")}
+                      </Button>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
             <div className="flex flex-wrap items-center justify-end gap-3 border-t border-line px-5 py-3 text-xs text-muted">
               {hasMore && <span className="mr-auto text-subtle">{t("audit.moreAvailable")}</span>}
               <span aria-live="polite" className="tabular-nums">

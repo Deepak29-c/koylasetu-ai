@@ -20,6 +20,7 @@ import {
 import DueBadge from "@/components/reports/DueBadge";
 import { StatusTimeline, VersionList } from "@/components/reports/History";
 import ReportEditor, { unlinkedByItem } from "@/components/reports/ReportEditor";
+import SimilarQuestions from "@/components/similar/SimilarQuestions";
 import Alert from "@/components/ui/Alert";
 import Badge from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -48,6 +49,7 @@ import { formatDate, formatDateTime } from "@/lib/format";
 import { type LabelKey, useT } from "@/lib/i18n";
 import { can, canSeeReports } from "@/lib/permissions";
 import { contentMode, EDITABLE_STATUSES } from "@/lib/reportView";
+import { pqQuestionText } from "@/lib/similar";
 
 
 export default function ReportDetailPage() {
@@ -450,6 +452,10 @@ export default function ReportDetailPage() {
               ]}
             />
           </Card>
+
+          {report.report_type === "pq_reply" && (
+            <SimilarQuestions text={pqQuestionText(report)} exclude={report.id} limit={3} />
+          )}
 
           {canExport && (
             <Card>
