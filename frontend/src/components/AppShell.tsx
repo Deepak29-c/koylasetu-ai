@@ -37,7 +37,7 @@ import { api, ApiError, logout, type Me } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { errorText } from "@/lib/errors";
 import { type LabelKey, setLang, useT } from "@/lib/i18n";
-import { can, canSeeReports, type Permission } from "@/lib/permissions";
+import { activeHref, visibleNav } from "@/lib/nav";
 
 const MeContext = createContext<Me | null>(null);
 
@@ -48,70 +48,26 @@ export function useMe(): Me {
   return me;
 }
 
-type NavItem = {
-  href: string;
-  label: LabelKey;
-  icon: typeof House;
-  show: (me: Me) => boolean;
-  /** Indented under the item before it. */
-  sub?: boolean;
+/** The icon for each menu entry in lib/nav.ts. */
+const NAV_ICONS: Record<string, typeof House> = {
+  "/": House,
+  "/ask": MessageSquareText,
+  "/reports": FileText,
+  "/approvals": Inbox,
+  "/pq-replies/new": FilePlus2,
+  "/monthly-reports/new": FilePlus2,
+  "/briefing-notes/new": FilePlus2,
+  "/upload": Upload,
+  "/documents": Files,
+  "/review": ClipboardCheck,
+  "/topics": Cloud,
+  "/metrics": Gauge,
+  "/admin/users": Users,
+  "/audit": ScrollText,
+  "/admin/templates": LayoutTemplate,
+  "/admin/rules": ListChecks,
+  "/admin/status": Activity,
 };
-type NavGroup = { label?: LabelKey; items: NavItem[] };
-
-const has =
-  (...p: Permission[]) =>
-  (me: Me) =>
-    can(me, ...p);
-
-// Menu shows only what the user's role can open (the API checks again on every request).
-const GROUPS: NavGroup[] = [
-  { items: [{ href: "/", label: "home", icon: House, show: () => true }] },
-  {
-    label: "nav.work",
-    items: [
-      { href: "/ask", label: "ask", icon: MessageSquareText, show: has("ask_questions") },
-      { href: "/reports", label: "reports", icon: FileText, show: canSeeReports },
-      { href: "/approvals", label: "nav.approvals", icon: Inbox, show: has("approve_reports") },
-      { href: "/pq-replies/new", label: "newPqReply", icon: FilePlus2, show: has("edit_reports"), sub: true },
-      { href: "/monthly-reports/new", label: "newMonthlyReport", icon: FilePlus2, show: has("edit_reports"), sub: true },
-      { href: "/briefing-notes/new", label: "newBriefingNote", icon: FilePlus2, show: has("edit_reports"), sub: true },
-    ],
-  },
-  {
-    label: "nav.data",
-    items: [
-      { href: "/upload", label: "upload", icon: Upload, show: has("upload_documents") },
-      { href: "/documents", label: "documents", icon: Files, show: has("view_processing") },
-      { href: "/review", label: "review", icon: ClipboardCheck, show: has("review_facts") },
-    ],
-  },
-  {
-    label: "nav.insights",
-    items: [
-      { href: "/topics", label: "topics", icon: Cloud, show: has("view_topics") },
-      { href: "/metrics", label: "nav.metrics", icon: Gauge, show: has("view_metrics") },
-    ],
-  },
-  {
-    label: "nav.admin",
-    items: [
-      { href: "/admin/users", label: "users", icon: Users, show: has("manage_admin") },
-      { href: "/admin/templates", label: "adminTemplates.title", icon: LayoutTemplate, show: has("manage_admin") },
-      { href: "/admin/rules", label: "adminRules.title", icon: ListChecks, show: has("manage_admin") },
-      { href: "/admin/status", label: "adminStatus.title", icon: Activity, show: has("manage_admin") },
-      { href: "/audit", label: "auditLog", icon: ScrollText, show: has("view_audit") },
-    ],
-  },
-];
-
-const ALL_HREFS = [...GROUPS.flatMap((g) => g.items.map((i) => i.href)), "/profile"];
-
-/** The menu entry for a path: the longest matching prefix, so /reports/123 lights up Reports. */
-function activeHref(pathname: string): string | null {
-  if (pathname === "/") return "/";
-  const matches = ALL_HREFS.filter((h) => h !== "/" && (pathname === h || pathname.startsWith(`${h}/`)));
-  return matches.sort((a, b) => b.length - a.length)[0] ?? null;
-}
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -343,29 +299,25 @@ function SideNav({ me, current, collapsed }: { me: Me | null; current: string | 
   const { t } = useT();
   return (
     <nav aria-label={t("nav.main")} className="flex-1 overflow-x-hidden overflow-y-auto px-3 py-2">
-      {GROUPS.map((g, gi) => {
-        const items = me ? g.items.filter((i) => i.show(me)) : [];
-        if (!items.length) return null;
-        return (
-          <div key={gi} className={cn(gi > 0 && "mt-4")}>
-            {g.label && <GroupLabel label={t(g.label)} collapsed={collapsed} />}
-            <ul className="space-y-0.5">
-              {items.map((it) => (
-                <li key={it.href}>
-                  <RailLink
-                    href={it.href}
-                    label={t(it.label)}
-                    icon={it.icon}
-                    active={current === it.href}
-                    collapsed={collapsed}
-                    sub={it.sub}
-                  />
-                </li>
-              ))}
-            </ul>
-          </div>
-        );
-      })}
+      {(me ? visibleNav(me.permissions) : []).map((g, gi) => (
+        <div key={g.label ?? "main"} className={cn(gi > 0 && "mt-4")}>
+          {g.label && <GroupLabel label={t(g.label)} collapsed={collapsed} />}
+          <ul className="space-y-0.5">
+            {g.items.map((it) => (
+              <li key={it.href}>
+                <RailLink
+                  href={it.href}
+                  label={t(it.label)}
+                  icon={NAV_ICONS[it.href] ?? House}
+                  active={current === it.href}
+                  collapsed={collapsed}
+                  sub={it.sub}
+                />
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
     </nav>
   );
 }

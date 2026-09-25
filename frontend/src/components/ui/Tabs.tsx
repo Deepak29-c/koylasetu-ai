@@ -37,7 +37,11 @@ export default function Tabs<V extends string>({
     <div
       role={onChange ? "tablist" : undefined}
       aria-label={label}
-      className={cn("inline-flex max-w-full gap-1 overflow-x-auto rounded-full bg-surface-sunken p-1", className)}
+      // On a phone the tabs wrap onto a second line rather than hiding off the edge.
+      className={cn(
+        "inline-flex max-w-full flex-wrap gap-1 rounded-card bg-surface-sunken p-1 sm:flex-nowrap sm:overflow-x-auto sm:rounded-full",
+        className,
+      )}
     >
       {items.map((it) => {
         const active = it.value === value;

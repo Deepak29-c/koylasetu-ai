@@ -82,7 +82,8 @@ export default function PageHeader({
           </div>
           {description && <p className="mt-1 max-w-3xl text-sm text-muted">{description}</p>}
         </div>
-        {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+        {/* On a phone the actions take their own line so the title keeps the full width. */}
+        {actions && <div className="flex basis-full flex-wrap items-center gap-2 sm:basis-auto">{actions}</div>}
       </div>
       {tabs}
     </header>
