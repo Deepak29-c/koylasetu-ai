@@ -39,6 +39,39 @@ export type UploadResult = {
   error: string | null;
 };
 
+export type DocumentDetail = DocumentRow & {
+  org_unit_id: string;
+  source_url: string | null;
+};
+
+export type ChunkOut = {
+  id: string;
+  text: string;
+  bbox: [number, number, number, number] | null;
+  has_embedding: boolean;
+};
+
+export type TableOut = {
+  id: string;
+  table_title: string | null;
+  bbox: [number, number, number, number] | null;
+  rows_json: string[][];
+};
+
+export type PageOut = {
+  document_id: string;
+  page_no: number;
+  page_count: number | null;
+  has_text_layer: boolean;
+  ocr_used: boolean;
+  ocr_confidence: number | null;
+  width: number | null;
+  height: number | null;
+  image_url: string | null;
+  chunks: ChunkOut[];
+  tables: TableOut[];
+};
+
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -112,6 +145,25 @@ export async function api<T>(path: string, init: RequestInit = {}, retry = true)
   if (res.status === 401 && retry && (await refreshTokens())) return api<T>(path, init, false);
   if (!res.ok) throw new ApiError(res.status, await errorMessage(res));
   return res.json() as Promise<T>;
+}
+
+export function getDocument(id: string): Promise<DocumentDetail> {
+  return api<DocumentDetail>(`/documents/${id}`);
+}
+
+export function getPage(id: string, pageNo: number): Promise<PageOut> {
+  return api<PageOut>(`/documents/${id}/pages/${pageNo}`);
+}
+
+/** The page image needs the auth header, so a plain <img src> can't fetch it directly —
+ * this loads it and hands back a local blob URL. Caller must revokeObjectURL when done. */
+export async function fetchPageImage(imageUrl: string): Promise<string> {
+  const headers = new Headers();
+  const token = read(ACCESS);
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  const res = await fetch(`${API_URL}${imageUrl}`, { headers });
+  if (!res.ok) throw new ApiError(res.status, await errorMessage(res));
+  return URL.createObjectURL(await res.blob());
 }
 
 export async function login(email: string, password: string): Promise<void> {

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
 import { useMe } from "@/components/AppShell";
@@ -76,7 +77,9 @@ export default function DocumentsPage() {
               {docs.map((d) => (
                 <tr key={d.id} className="border-t align-top">
                   <td className="px-4 py-2">
-                    <div className="font-medium">{d.title}</div>
+                    <Link href={`/documents/${d.id}`} className="font-medium text-brand hover:underline">
+                      {d.title}
+                    </Link>
                     {d.error_message && <div className="text-xs text-red-700">{d.error_message}</div>}
                   </td>
                   <td className="px-4 py-2">{t(`doc.${d.doc_type}` as LabelKey)}</td>

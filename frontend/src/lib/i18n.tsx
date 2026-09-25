@@ -56,6 +56,26 @@ const en = {
   "status.PROCESSED": "Done",
   "status.NEEDS_REVIEW": "Needs review",
   "status.FAILED": "Failed",
+  backToDocuments: "Back to documents",
+  page: "Page",
+  ofPages: "of",
+  previousPage: "Previous",
+  nextPage: "Next",
+  jumpToPage: "Go to page",
+  processingInProgress: "Still processing — this page isn't ready yet.",
+  notProcessedYet: "This document hasn't been processed yet.",
+  documentFailed: "Processing failed",
+  noPagesYet: "No pages processed yet.",
+  extractedText: "Text found on this page",
+  extractedTables: "Tables found on this page",
+  noTextOnPage: "No text was extracted from this page.",
+  noTablesOnPage: "No tables were found on this page.",
+  ocrUsedLabel: "Read with OCR",
+  textLayerLabel: "Native text",
+  ocrConfidence: "OCR confidence",
+  factsComingSoon: "Pulling out verified numbers from this page isn't built yet — for now, here's the raw text and tables the system found.",
+  noPageImage: "No preview available for this file type.",
+  sourceLabel: "Source",
 };
 
 export type LabelKey = keyof typeof en;
@@ -94,6 +114,11 @@ const hi: Partial<Record<LabelKey, string>> = {
   "lang.en": "अंग्रेज़ी",
   "lang.hi": "हिंदी",
   "lang.mixed": "हिंदी + अंग्रेज़ी",
+  backToDocuments: "दस्तावेज़ों पर वापस जाएं",
+  page: "पृष्ठ",
+  previousPage: "पिछला",
+  nextPage: "अगला",
+  processingInProgress: "अभी भी प्रोसेस हो रहा है — यह पृष्ठ अभी तैयार नहीं है।",
 };
 
 export type Lang = "en" | "hi";
