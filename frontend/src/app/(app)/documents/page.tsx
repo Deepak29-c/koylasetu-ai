@@ -66,7 +66,7 @@ export default function DocumentsPage() {
               <tr>
                 <th className="px-4 py-2 font-medium">{t("title")}</th>
                 <th className="px-4 py-2 font-medium">{t("type")}</th>
-                <th className="px-4 py-2 font-medium">FY</th>
+                <th className="px-4 py-2 font-medium">{t("fyShort")}</th>
                 <th className="px-4 py-2 font-medium">{t("status")}</th>
                 <th className="px-4 py-2 font-medium">{t("pages")}</th>
                 <th className="px-4 py-2 font-medium">{t("uploadedOn")}</th>
