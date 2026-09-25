@@ -24,8 +24,15 @@ from app.core.db import get_db
 from app.core.deps import require, scope_to_user, sees_all_units
 from app.core.rbac import Permission, Role
 from app.models import Chunk, Document, ExtractedTable, Fact, Page, ReviewActionLog, User
-from app.models.enums import DocType, DocumentStatus
-from app.schemas.document import ChunkOut, DocumentOut, PageOut, TableOut, UploadResult
+from app.models.enums import DocType, DocumentStatus, Metric
+from app.schemas.document import (
+    ChunkOut,
+    DocumentOut,
+    FactOut,
+    PageOut,
+    TableOut,
+    UploadResult,
+)
 from app.services import audit, file_types, storage
 from app.services.normalise import normalise_fy
 from app.services.queue import enqueue_ingest
@@ -220,6 +227,24 @@ def get_page(
         ],
         tables=[TableOut.model_validate(t) for t in tables],
     )
+
+
+@router.get("/{document_id}/facts", response_model=list[FactOut])
+def list_facts(
+    document_id: uuid.UUID,
+    page_no: int | None = Query(None, ge=1),
+    metric: Metric | None = None,
+    user: User = Depends(require(Permission.VIEW_PROCESSING)),
+    db: Session = Depends(get_db),
+) -> list[Fact]:
+    """Numbers extracted from this document's tables, each with its page and cell box."""
+    doc = _get_scoped(db, document_id, user)
+    stmt = select(Fact).where(Fact.document_id == doc.id)
+    if page_no is not None:
+        stmt = stmt.where(Fact.page_no == page_no)
+    if metric is not None:
+        stmt = stmt.where(Fact.metric == metric)
+    return list(db.scalars(stmt.order_by(Fact.page_no, Fact.metric, Fact.subsidiary).limit(5000)))
 
 
 @router.get("/{document_id}/pages/{page_no}/image", response_class=Response)

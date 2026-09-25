@@ -96,4 +96,7 @@ class ExtractedTable(Entity):
     page_no: Mapped[int] = mapped_column(Integer)
     bbox: Mapped[list[float] | None] = mapped_column(JSONB)
     rows_json: Mapped[list] = mapped_column(JSONB)  # raw cell grid, list of rows
+    # Same shape as rows_json: the [x0, y0, x1, y1] of each cell (null where unknown), so a
+    # fact can highlight the exact cell it came from.
+    cell_bboxes: Mapped[list | None] = mapped_column(JSONB)
     table_title: Mapped[str | None] = mapped_column(Text)

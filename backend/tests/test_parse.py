@@ -195,3 +195,51 @@ def test_sideways_page_is_read_after_rotation():
     text = " ".join(line.text for line in result.lines)
     assert "RESOURCES" in text and "MEASURED" in text
     assert all(0 <= b <= max(sideways.size) for line in result.lines for b in line.bbox)
+
+
+def test_pdf_table_title_cell_boxes_and_running_header(tmp_path):
+    """The text just above a table is its title (with the unit); every cell keeps its box."""
+    doc = pymupdf.open()
+    for n in range(2):
+        page = doc.new_page()
+        page.insert_text((50, 30), f"Annual Report 2024-25   page {n + 1}", fontsize=9)
+        page.insert_textbox(pymupdf.Rect(50, 60, 550, 160), PARA, fontsize=11)
+        page.insert_text((50, 180), "Coal Production (in MT)", fontsize=11)
+        x0, y0, cw, rh = 50, 200, 150, 25
+        for r in range(4):
+            page.draw_line((x0, y0 + r * rh), (x0 + 2 * cw, y0 + r * rh))
+        for c in range(3):
+            page.draw_line((x0 + c * cw, y0), (x0 + c * cw, y0 + 3 * rh))
+        for r, row in enumerate([["Subsidiary", "2024-25"], ["MCL", "225.2"], ["NCL", "139.1"]]):
+            for c, value in enumerate(row):
+                page.insert_text((x0 + c * cw + 5, y0 + r * rh + 17), value, fontsize=10)
+    path = tmp_path / "report.pdf"
+    doc.save(path)
+
+    p1 = next(parse.parse(path, "application/pdf", fake_ocr))
+    (table,) = p1.tables
+    assert table.title == "Coal Production (in MT)"
+    assert len(table.cell_bboxes) == len(table.rows)
+    x0, y0, x1, y1 = table.cell_bboxes[1][1]  # the "225.2" cell
+    assert (x0, x1) == pytest.approx((200, 350), abs=1)
+    assert (y0, y1) == pytest.approx((225, 250), abs=1)
+
+
+def test_running_header_is_not_a_title(tmp_path):
+    doc = pymupdf.open()
+    for _ in range(2):
+        page = doc.new_page()
+        page.insert_text((50, 40), "Ministry of Coal", fontsize=9)
+        page.insert_textbox(pymupdf.Rect(50, 100, 550, 200), PARA, fontsize=11)
+        x0, y0, cw, rh = 50, 60, 150, 20  # table right under the header
+        for r in range(3):
+            page.draw_line((x0, y0 + r * rh), (x0 + 2 * cw, y0 + r * rh))
+        for c in range(3):
+            page.draw_line((x0 + c * cw, y0), (x0 + c * cw, y0 + 2 * rh))
+        for r, row in enumerate([["State", "2024-25"], ["ODISHA", "10"]]):
+            for c, value in enumerate(row):
+                page.insert_text((x0 + c * cw + 5, y0 + r * rh + 14), value, fontsize=10)
+    path = tmp_path / "chapter.pdf"
+    doc.save(path)
+    p1 = next(parse.parse(path, "application/pdf", fake_ocr))
+    assert p1.tables and p1.tables[0].title is None

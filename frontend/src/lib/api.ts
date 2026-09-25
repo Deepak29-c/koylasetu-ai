@@ -115,6 +115,120 @@ export type ReviewSummary = {
   automation_percent: number | null;
 };
 
+export type AuditLogRow = {
+  id: string;
+  created_at: string;
+  user: { id: string; name: string; email: string } | null;
+  action: string;
+  entity: string | null;
+  entity_id: string | null;
+  details_json: Record<string, unknown> | null;
+  ip: string | null;
+};
+
+export type AuditFilters = {
+  action?: string;
+  entity?: string;
+  user_email?: string;
+  from_date?: string;
+  to_date?: string;
+};
+
+export function listAuditLog(filters: AuditFilters): Promise<AuditLogRow[]> {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value) params.set(key, value);
+  }
+  const qs = params.toString();
+  return api<AuditLogRow[]>(`/audit${qs ? `?${qs}` : ""}`);
+}
+
+export function listAuditActions(): Promise<string[]> {
+  return api<string[]>("/audit/actions");
+}
+
+export type Role = "admin" | "operator" | "reviewer" | "analyst" | "approver" | "viewer";
+export const ALL_ROLES: Role[] = ["admin", "operator", "reviewer", "analyst", "approver", "viewer"];
+
+export type OrgUnitOut = { id: string; code: string; name: string; type: string };
+
+export type UserRow = {
+  id: string;
+  name: string;
+  email: string;
+  roles: string[];
+  org_unit: OrgUnitOut;
+  is_active: boolean;
+  created_at: string;
+};
+
+export type UserCreateIn = {
+  name: string;
+  email: string;
+  password: string;
+  roles: string[];
+  org_unit_id: string;
+};
+
+export type UserUpdateIn = {
+  name?: string;
+  roles?: string[];
+  org_unit_id?: string;
+  is_active?: boolean;
+};
+
+export type ReportType = "pq_reply" | "monthly" | "briefing";
+export type ReportStatus = "DRAFT" | "IN_REVIEW" | "RETURNED" | "APPROVED" | "EXPORTED";
+
+export type ReportRow = {
+  id: string;
+  report_type: ReportType;
+  title: string;
+  status: ReportStatus;
+  content_json: { text?: string };
+  org_unit_id: string;
+  created_by: string;
+  approver_id: string | null;
+  due_date: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ReportVersionRow = {
+  version: number;
+  content_json: { text?: string };
+  editor: { id: string; name: string; email: string };
+  change_note: string | null;
+  created_at: string;
+};
+
+export type ReportsPanel = {
+  my_drafts: number;
+  returned_to_me: number;
+  awaiting_approval: number;
+  due_soon: number;
+  overdue: number;
+};
+
+export type DocumentsPanel = {
+  processing: number;
+  needs_review: number;
+  failed: number;
+  processed_this_month: number;
+};
+
+export type ReviewPanel = { pending_facts: number; flagged_facts: number };
+
+export type ActivityPanel = { questions_this_month: number };
+
+/** Panels the signed-in person has no permission for come back as null, not zero. */
+export type DashboardSummary = {
+  reports: ReportsPanel | null;
+  documents: DocumentsPanel | null;
+  review: ReviewPanel | null;
+  activity: ActivityPanel | null;
+};
+
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -202,6 +316,91 @@ export async function fetchImageUrl(path: string, retry = true): Promise<string>
   return URL.createObjectURL(await res.blob());
 }
 
+export function listOrgUnits(): Promise<OrgUnitOut[]> {
+  return api<OrgUnitOut[]>("/org-units");
+}
+
+export function listUsers(): Promise<UserRow[]> {
+  return api<UserRow[]>("/users");
+}
+
+export function createUser(body: UserCreateIn): Promise<UserRow> {
+  return api<UserRow>("/users", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export function updateUser(id: string, body: UserUpdateIn): Promise<UserRow> {
+  return api<UserRow>(`/users/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export function listReports(filters: { status?: string; report_type?: string } = {}): Promise<ReportRow[]> {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value) params.set(key, value);
+  }
+  const qs = params.toString();
+  return api<ReportRow[]>(`/reports${qs ? `?${qs}` : ""}`);
+}
+
+export function createReport(body: {
+  report_type: ReportType;
+  title: string;
+  content_json?: { text?: string };
+  due_date?: string | null;
+}): Promise<ReportRow> {
+  return api<ReportRow>("/reports", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export function getReport(id: string): Promise<ReportRow> {
+  return api<ReportRow>(`/reports/${id}`);
+}
+
+export function listReportVersions(id: string): Promise<ReportVersionRow[]> {
+  return api<ReportVersionRow[]>(`/reports/${id}/versions`);
+}
+
+export function updateReport(
+  id: string,
+  body: { title?: string; content_json?: { text?: string }; due_date?: string | null; change_note?: string },
+): Promise<ReportRow> {
+  return api<ReportRow>(`/reports/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export function submitReport(id: string): Promise<ReportRow> {
+  return api<ReportRow>(`/reports/${id}/submit`, { method: "POST" });
+}
+
+export function approveReport(id: string): Promise<ReportRow> {
+  return api<ReportRow>(`/reports/${id}/approve`, { method: "POST" });
+}
+
+export function rejectReport(id: string, comment: string): Promise<ReportRow> {
+  return api<ReportRow>(`/reports/${id}/reject`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ comment }),
+  });
+}
+
+export function getDashboardSummary(): Promise<DashboardSummary> {
+  return api<DashboardSummary>("/dashboard/summary");
+}
+
 export async function login(email: string, password: string): Promise<void> {
   const res = await fetch(`${API_URL}/auth/login`, {
     method: "POST",
@@ -210,6 +409,14 @@ export async function login(email: string, password: string): Promise<void> {
   });
   if (!res.ok) throw new ApiError(res.status, await errorMessage(res));
   saveTokens(await res.json());
+}
+
+export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  await api<void>("/me/password", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+  });
 }
 
 /** Multipart upload with a progress callback (fetch cannot report upload progress). */

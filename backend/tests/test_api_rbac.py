@@ -73,3 +73,13 @@ def test_edit_and_reject_need_a_comment(client_as):
     reviewer = client_as(["reviewer"])
     assert reviewer.post(url, json={"action": "REJECT"}).status_code == 422
     assert reviewer.post(url, json={"action": "EDIT", "comment": "typo"}).status_code == 422
+
+
+def test_viewer_cannot_list_raw_facts(client_as):
+    doc_id = "00000000-0000-0000-0000-000000000001"
+    assert client_as(["viewer"]).get(f"/documents/{doc_id}/facts").status_code == 403
+
+
+def test_facts_needs_login():
+    doc_id = "00000000-0000-0000-0000-000000000001"
+    assert TestClient(app).get(f"/documents/{doc_id}/facts").status_code == 401

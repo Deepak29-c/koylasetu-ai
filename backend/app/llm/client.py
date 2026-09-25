@@ -59,18 +59,25 @@ def _post(path: str, payload: dict, timeout: float) -> dict:
     return res.json()
 
 
-def chat(system: str, user: str, *, temperature: float = 0.1, timeout: float = 300) -> str:
-    """One-shot chat completion. Low temperature by default (guide 17.2)."""
-    data = _post(
-        "/api/chat",
-        {
-            "model": get_settings().llm_model,
-            "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
-            "stream": False,
-            "options": {"temperature": temperature, "num_ctx": get_settings().llm_num_ctx},
-        },
-        timeout,
-    )
+def chat(
+    system: str,
+    user: str,
+    *,
+    temperature: float = 0.1,
+    timeout: float = 300,
+    json_schema: dict | None = None,
+) -> str:
+    """One-shot chat completion. Low temperature by default (guide 17.2). With `json_schema`
+    the model server constrains the reply to JSON of that shape (validate it anyway)."""
+    payload = {
+        "model": get_settings().llm_model,
+        "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
+        "stream": False,
+        "options": {"temperature": temperature, "num_ctx": get_settings().llm_num_ctx},
+    }
+    if json_schema is not None:
+        payload["format"] = json_schema
+    data = _post("/api/chat", payload, timeout)
     return data.get("message", {}).get("content", "").strip()
 
 

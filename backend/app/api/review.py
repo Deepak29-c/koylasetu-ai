@@ -124,8 +124,11 @@ def decide(
         if value is None:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Not a number")
         # keep the unit: the standard value scales with the corrected original-unit value
-        factor = float(fact.value_std) / float(fact.value) if fact.value and fact.value_std else 1
-        fact.value, fact.value_std = value, round(value * factor, 6)
+        # (no standard value = the unit could not be converted; it stays unconverted)
+        if fact.value_std is not None:
+            factor = float(fact.value_std) / float(fact.value) if fact.value else 1
+            fact.value_std = round(value * factor, 6)
+        fact.value = value
         new = f"{value}"
     fact.status = FactStatus.REJECTED if body.action == "REJECT" else FactStatus.VERIFIED
 

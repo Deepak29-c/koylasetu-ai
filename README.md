@@ -6,6 +6,7 @@ Verified AI Reporting & Parliamentary-Reply Assistant for CMPDI / CIL (SIH 2026,
 The full technical spec is [docs/KoylaSetu_AI_Developer_Guide.docx](docs/KoylaSetu_AI_Developer_Guide.docx).
 
 **New to the project? Start with [docs/SETUP.md](docs/SETUP.md)** for prerequisites, first-time setup and common problems.
+**Picking up existing work? Read [docs/KNOWLEDGE_TRANSFER.md](docs/KNOWLEDGE_TRANSFER.md)** for what's actually built vs. stubbed, the data model, the non-Docker setup gotchas, and where to pick up next.
 
 ## What's in the repo
 
@@ -23,26 +24,18 @@ The full technical spec is [docs/KoylaSetu_AI_Developer_Guide.docx](docs/KoylaSe
 
 Built so far:
 
-**Step 3a: facts, validation, review queue** (guide 7.2-7.4, 8, W2):
-- Tables → facts by keyword rules; numbers are copied from the cell by code, with the cell's
-  bbox, so each figure can be highlighted on its page. Glued two-row headers are split,
-  spanning headers filled across, stacked rows ("Jharkhand / Chhattisgarh") split
-- Layouts supported today: subsidiary tables (production, coking coal, despatch, target;
-  month / year-to-date / FY) and state-wise resource tables (Measured / Indicated / Inferred /
-  Total, "as on" date, coking coal kept separate). Other tables produce no facts
-- Normalisation: units → MT (lakh ×0.1, thousand ÷1000, billion ×1000) or Mcum, Indian/western
-  digit grouping, Hindi digits, subsidiary and state aliases, month → YYYY-MM within the FY
-- Confidence = cell confidence × header mapping × 0.5 if the unit was guessed; < 0.85 flagged
-- Rules V01-V08 (totals, conflicts between documents, impossible values, unit, confidence,
-  ±50 % year-on-year, duplicates, unknown period). Facts with no issue are accepted
-  automatically; the rest go to the Reviewer. Document status NEEDS_REVIEW until resolved
+**Step 3a: validation and review queue** (guide 8, W2), on the facts from "Tables → facts" below:
+- Rules V01-V08 in `worker/validate.py` (subsidiaries add up to CIL, CIL + SCCL + Captive and
+  states add up to India, conflicts with other documents, impossible values, unit not stated or
+  not convertible, confidence < 0.85, ±50 % year-on-year, duplicates, unknown period). They run
+  after extraction in the ingest job and in `python -m worker.extract <id>`
+- Facts with no issue are accepted automatically (VERIFIED); the rest are FLAGGED for the
+  Reviewer. Document status NEEDS_REVIEW while any fact is flagged
 - Review screen: source page with the cell highlighted, the value, why it was flagged, the
   other source's value; Accept / Correct / Reject (comment required for the last two), all
   logged in review_actions + audit_log. A reviewed document can no longer be re-processed
+  (API retry and the rebuild command both refuse)
 - `/review/summary` gives the automation % (facts accepted automatically ÷ all facts)
-
-On the two documents processed so far (Monthly Coal Statistics Dec 2024, Coal Inventory 2025):
-200 facts, 199 accepted automatically. That is 2 clean digital documents, not a benchmark result.
 
 **Step 2: Q&A with citations** (guide section 9, text route), Ask screen + document viewer:
 - Hybrid search: Postgres full-text + pgvector (BGE-M3), merged with reciprocal rank fusion,
@@ -76,6 +69,47 @@ facts), built in step 3.
 - Live progress (pages done / total); retry re-runs any finished document
 - `GET /documents/{id}/pages/{n}` (chunks + tables with boxes) and `/pages/{n}/image`
 
+**Tables → facts** (guide 7.2-7.4, step 10), runs in the same job:
+- Every number in a table becomes a fact: metric, subsidiary or state, period (FY or month),
+  category (Measured / Indicated / Inferred), value, unit, and its document, page and cell box
+- Read from the column header, row label and the title just above the table; handles merged
+  header cells, serial-number columns and sub-headers PyMuPDF puts inside the first data row
+- Units converted to MT / Mcum (lakh, thousand, million tonnes; cum), original unit kept;
+  subsidiary aliases (Mahanadi Coalfields / M.C.L. → MCL), FY and month forms, Hindi digits
+- Skipped on purpose rather than stored with the wrong meaning: %, growth, money and count
+  columns; "upto" / Apr-Nov ranges and projections; single mines, sectors, coal grades and
+  depth ranges; lignite; and any fact a table gives twice with different values
+- Confidence = OCR confidence × header mapping × 0.5 if the unit was not stated (guide 7.4);
+  the local LLM only names a table's metric when no keyword matches (`EXTRACT_USE_LLM`)
+- `GET /documents/{id}/facts`; `python -m worker.extract <document id>` rebuilds the facts
+  of a document processed before this existed
+
+**Benchmark set** (guide 15.2, issue #16): `eval/pq_benchmark.jsonl` holds 34 real Lok Sabha
+coal questions (2018-2022) with the official written answer, the key figures in it (183 in
+all: value, unit and, for figures from tables or easy to confuse, an optional `label`), a topic
+and the coal.gov.in PDF it came from. Units come from one fixed list (MT, MTPA, MT/day,
+thousand tonnes, tonnes/year, tonnes/day, rakes/day, BU, MW, GW, %, Rs crore, Rs/tonne, days,
+years, count). Only PDFs with a clean text layer were used; scanned ones and ones with a
+garbled OCR layer were skipped. `python scripts/check_benchmark.py` (also run by pytest)
+checks the format `eval/run_eval.py` expects, the units, and that every expected value occurs
+in its official answer as a standalone number with the right sign. It does not check the unit
+or which cell was meant.
+
+**Benchmark runner** (guide 15.2, issue #11): with the API running and the demo users seeded,
+`backend/.venv/Scripts/python eval/run_eval.py` (options `--limit N`, `--ids a,b`,
+`--base-url`, `--timeout`, `--database-url` for automation %) logs in as the demo analyst,
+asks every benchmark question through `POST /qa/ask` and writes `eval/results/<date>/`:
+`report.md` and `summary.json` (numeric accuracy = expected figures found within 0.5% after
+unit conversion ÷ all expected figures, also per topic and per question; questions with every
+figure right; grounded %; not-found and error counts; latency p50/avg/max; figures in the
+answer that are not in the official answer), plus `results.json` and `citation_check.csv`
+(git-ignored: they hold text from our documents). Timeouts, 503s and other API errors are
+recorded and the run goes on. Citation correctness is a manual check: fill the `correct`
+column of `citation_check.csv` with Y/N, then `run_eval.py --rescore eval/results/<date>`;
+time saved comes from timed trials (`--time-trials`, CSV id, manual_seconds,
+assisted_seconds). Exact metric definitions: `scripts/benchmark_runner.py`. Real accuracy
+numbers need the local models pulled and the source documents loaded.
+
 **Setup (step 0):**
 - Docker Compose for all 6 services
 - All tables from guide section 6, plus the first Alembic migration
@@ -86,8 +120,9 @@ facts), built in step 3.
 - Frontend: login, home, upload (drag and drop, progress bar) and documents pages, with an English/Hindi toggle
 - Seed script with demo users for all 6 roles
 
-Not built yet: NUMERIC route (step 3b), reports,
-topics, and the benchmark. PaddleOCR (`OCR_ENGINE=paddle`) currently falls back to Tesseract.
+Not built yet: NUMERIC route (step 3b, PR #36), reports generation,
+topics, and the Metrics screen that shows the benchmark results. Tables on scanned pages are not detected yet (OCR gives text only).
+PaddleOCR (`OCR_ENGINE=paddle`) currently falls back to Tesseract.
 
 ## Run with Docker (the normal way)
 
@@ -111,17 +146,20 @@ Demo logins (password = `SEED_DEMO_PASSWORD`): `admin@`, `operator@`, `reviewer@
 
 ## Run without Docker
 
-You still need PostgreSQL 16 with the pgvector extension, and Redis, running locally.
-Set `DATABASE_URL` / `REDIS_URL` in `.env` to `localhost`.
+Postgres 16 + pgvector and Redis on your own machine, no Docker. On macOS / Ubuntu / Debian:
+
+```bash
+bash scripts/setup_local.sh --seed       # installs + starts services, creates DB, migrates, seeds
+```
+
+Windows steps (pgvector build, Redis via Memurai / WSL) and what each step does are in
+[docs/SETUP.md, section 9](docs/SETUP.md#9-run-without-docker). After pulling new code, re-run
+`scripts/setup_local_db.py`; it only does what is missing. Then:
 
 ```bash
 cd backend
-python -m venv .venv
-.venv/Scripts/pip install -r requirements.txt     # Linux/macOS: .venv/bin/pip
-.venv/Scripts/alembic upgrade head
-.venv/Scripts/python -m app.scripts.seed
-.venv/Scripts/uvicorn app.main:app --reload
-.venv/Scripts/rq worker ingest topics reports      # worker, in another terminal
+.venv/Scripts/uvicorn app.main:app --reload       # Linux/macOS: .venv/bin/uvicorn
+.venv/bin/rq worker ingest topics reports          # worker (macOS/Linux; Windows: see SETUP.md)
 ```
 
 ```bash
