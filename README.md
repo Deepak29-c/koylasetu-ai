@@ -82,6 +82,21 @@ checks the format `eval/run_eval.py` expects, the units, and that every expected
 in its official answer as a standalone number with the right sign. It does not check the unit
 or which cell was meant.
 
+**Benchmark runner** (guide 15.2, issue #11): with the API running and the demo users seeded,
+`backend/.venv/Scripts/python eval/run_eval.py` (options `--limit N`, `--ids a,b`,
+`--base-url`, `--timeout`, `--database-url` for automation %) logs in as the demo analyst,
+asks every benchmark question through `POST /qa/ask` and writes `eval/results/<date>/`:
+`report.md` and `summary.json` (numeric accuracy = expected figures found within 0.5% after
+unit conversion ÷ all expected figures, also per topic and per question; questions with every
+figure right; grounded %; not-found and error counts; latency p50/avg/max; figures in the
+answer that are not in the official answer), plus `results.json` and `citation_check.csv`
+(git-ignored: they hold text from our documents). Timeouts, 503s and other API errors are
+recorded and the run goes on. Citation correctness is a manual check: fill the `correct`
+column of `citation_check.csv` with Y/N, then `run_eval.py --rescore eval/results/<date>`;
+time saved comes from timed trials (`--time-trials`, CSV id, manual_seconds,
+assisted_seconds). Exact metric definitions: `scripts/benchmark_runner.py`. Real accuracy
+numbers need the local models pulled and the source documents loaded.
+
 **Setup (step 0):**
 - Docker Compose for all 6 services
 - All tables from guide section 6, plus the first Alembic migration
@@ -95,7 +110,7 @@ or which cell was meant.
 - Seed script with demo users for all 6 roles
 
 Not built yet: validation rules + review queue + NUMERIC route (rest of step 3), reports,
-topics, and the benchmark runner (`eval/run_eval.py`, #11). Tables on scanned pages are not detected yet (OCR gives text only).
+topics, and the Metrics screen that shows the benchmark results. Tables on scanned pages are not detected yet (OCR gives text only).
 PaddleOCR (`OCR_ENGINE=paddle`) currently falls back to Tesseract.
 
 ## Run with Docker (the normal way)
