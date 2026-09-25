@@ -348,7 +348,7 @@ def facts_from_table(
 ) -> list[FactDraft]:
     """Turn one extracted table into fact drafts (guide 7.2). No database, no side effects
     except the optional `classify` call when no metric is named anywhere in the table."""
-    grid = [[c or "" for c in r] for r in rows]
+    grid, cell_bboxes = _split_stacked_rows([[c or "" for c in r] for r in rows], cell_bboxes)
     layout = _layout(grid)
     if layout is None or not layout.data_cols:
         return []
@@ -467,6 +467,32 @@ def _date_targets(drafts: list[FactDraft], col_labels: dict[int, _Label]) -> Non
             d.period_type, d.period = PeriodType.MONTH, latest
         elif label is not None and label.signals.annual:
             d.period_type, d.period = PeriodType.FY, fy_of_month(latest)
+
+
+def _split_stacked_rows(
+    grid: list[list[str]], cell_bboxes: list[list[BBox | None]] | None
+) -> tuple[list[list[str]], list[list[BBox | None]] | None]:
+    """PyMuPDF sometimes reads two table rows as one, with each cell holding both values on
+    separate lines ("JHARKHAND\\nCHHATTISGARH" | "60290.47\\n45462.69" | ...). Split such a row
+    back into its rows, but only when it is unambiguous: every non-empty cell has the same
+    number of lines, and at least one cell is numbers on every line (so a two-line header
+    such as "Measured\\n(331)" is left alone). Both rows keep the original cell's box."""
+    out_rows: list[list[str]] = []
+    out_boxes: list[list[BBox | None]] = []
+    for i, row in enumerate(grid):
+        lines = [[x.strip() for x in c.split("\n")] if c.strip() else [] for c in row]
+        counts = {len(ls) for ls in lines if ls}
+        n = counts.pop() if len(counts) == 1 else 1
+        numeric = any(ls and all(parse_number(x) is not None for x in ls) for ls in lines)
+        boxes = cell_bboxes[i] if cell_bboxes and i < len(cell_bboxes) else None
+        if n > 1 and numeric:
+            for k in range(n):
+                out_rows.append([ls[k] if ls else "" for ls in lines])
+                out_boxes.append(list(boxes) if boxes else [])
+        else:
+            out_rows.append(row)
+            out_boxes.append(list(boxes) if boxes else [])
+    return out_rows, (out_boxes if cell_bboxes else None)
 
 
 def _tidy(value: float) -> float:
