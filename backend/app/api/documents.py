@@ -98,18 +98,20 @@ async def upload_documents(
             )
             continue
 
-        existing = db.scalar(select(Document).where(Document.sha256 == tmp.sha256))
-        if existing is not None:
+        # Only a copy this person can actually open counts as a duplicate: their own
+        # unit's, or one shared publicly. Another unit's private copy is not their
+        # document, so they get their own - previously that was a dead end (#44).
+        visible = db.scalar(
+            scope_to_user(select(Document).where(Document.sha256 == tmp.sha256), Document, user)
+        )
+        if visible is not None:
             tmp.path.unlink(missing_ok=True)
-            visible = db.scalar(
-                scope_to_user(select(Document).where(Document.id == existing.id), Document, user)
-            )
             results.append(
                 UploadResult(
                     filename=name,
                     result="duplicate",
-                    document=DocumentOut.model_validate(visible) if visible else None,
-                    error="This exact file was uploaded before",
+                    document=DocumentOut.model_validate(visible),
+                    error="This file is already here - opening it instead of adding it again",
                 )
             )
             continue

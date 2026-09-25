@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import { useRef, useState } from "react";
 
 import { useMe } from "@/components/AppShell";
@@ -89,9 +91,30 @@ export default function UploadPage() {
         >
           <p className="font-medium">{t("dropHere")}</p>
           {files.length > 0 && (
-            <p className="mt-2 text-sm text-gray-600">
-              {files.length} {t("filesChosen")}: {files.map((f) => f.name).join(", ")}
-            </p>
+            <div className="mt-3 space-y-1 text-sm text-gray-700">
+              <p className="text-gray-600">
+                {files.length} {t("filesChosen")}
+              </p>
+              <ul className="flex flex-wrap justify-center gap-2">
+                {files.map((f, i) => (
+                  <li key={`${f.name}-${i}`} className="flex items-center gap-1 rounded border bg-white px-2 py-1">
+                    <span>{f.name}</span>
+                    <button
+                      type="button"
+                      aria-label={`${t("upload.remove")}: ${f.name}`}
+                      // The dropzone around this opens the file picker on click.
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setFiles((prev) => prev.filter((_, j) => j !== i));
+                      }}
+                      className="px-1 text-gray-500 hover:text-red-700"
+                    >
+                      ×
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
           <input
             ref={inputRef}
@@ -100,8 +123,14 @@ export default function UploadPage() {
             accept={ACCEPT}
             className="hidden"
             onChange={(e) => {
-              setFiles((prev) => [...prev, ...Array.from(e.target.files ?? [])]);
+              // Read the list BEFORE clearing the input. setFiles' updater runs at
+              // render time, by which point e.target.files has already been emptied -
+              // so this appended nothing and choosing files through the picker did
+              // nothing at all. Clearing is still needed, or picking the same file
+              // twice fires no change event.
+              const chosen = Array.from(e.target.files ?? []);
               e.target.value = "";
+              setFiles((prev) => [...prev, ...chosen]);
             }}
           />
         </div>
@@ -185,6 +214,11 @@ export default function UploadPage() {
             <li key={i} className={`rounded border p-3 text-sm ${resultStyle[r.result]}`}>
               <span className="font-medium">{r.filename}</span> — {t(r.result)}
               {r.error && <span>: {r.error}</span>}
+              {r.document && (
+                <Link href={`/documents/${r.document.id}`} className="ml-2 underline">
+                  {t("upload.openExisting")}
+                </Link>
+              )}
               {r.result === "created" && !r.queued && <p className="mt-1">{t("notQueued")}</p>}
             </li>
           ))}
