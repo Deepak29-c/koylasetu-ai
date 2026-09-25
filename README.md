@@ -100,6 +100,14 @@ and "New briefing note" screens:
   renders); unapproved reports carry a DRAFT line, warnings and removed-figure notes. A reply
   edited in the plain-text editor is exported from its text without repeating the header or
   sources. Nothing is sent anywhere
+- Report screen: someone without `edit_reports` (Viewer, Approver) sees the content as plain
+  text; the "can't be edited right now, because of its status" line is only for editors
+  blocked by the status (#64). Version history stores a code (`change_kind`: created,
+  drafted, drafted_from_question, edited, approved, returned) plus the person's comment
+  (`change_comment`), so the line is worded in the reader's language and a return comment
+  is shown exactly as typed (#71). Rows from before migration 0007 keep their `change_note`
+  and are mapped to the same codes. `npm test` in `frontend/` runs the page's pure rules
+  (Node 22.18+; not in CI yet)
 
 **Step 3a: validation and review queue** (guide 8, W2), on the facts from "Tables → facts" below:
 - Rules V01-V08 in `worker/validate.py` (subsidiaries add up to CIL, CIL + SCCL + Captive and

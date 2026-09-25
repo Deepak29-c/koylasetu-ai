@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { type ChangeEvent, useCallback, useEffect, useState } from "react";
 
 import { useMe } from "@/components/AppShell";
 import ConfirmDialog from "@/components/ConfirmDialog";
@@ -20,6 +20,7 @@ import {
   updateReport,
 } from "@/lib/api";
 import { type LabelKey, useT } from "@/lib/i18n";
+import { contentMode, versionLine } from "@/lib/reportView";
 
 const STATUS_STYLE: Record<ReportStatus, string> = {
   DRAFT: "bg-gray-100 text-gray-800",
@@ -28,8 +29,6 @@ const STATUS_STYLE: Record<ReportStatus, string> = {
   APPROVED: "bg-green-100 text-green-800",
   EXPORTED: "bg-purple-100 text-purple-800",
 };
-
-const EDITABLE_STATUSES: ReportStatus[] = ["DRAFT", "RETURNED"];
 
 export default function ReportDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -84,6 +83,10 @@ export default function ReportDetailPage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+
+  function onTextChange(e: ChangeEvent<HTMLTextAreaElement>) {
+    setText(e.target.value);
+  }
 
   async function saveDraft() {
     setSaving(true);
@@ -192,7 +195,10 @@ export default function ReportDetailPage() {
   if (error) return <p className="rounded border border-red-300 bg-red-50 p-3 text-red-800">{error}</p>;
   if (!report) return <p className="text-gray-500">{t("loading")}</p>;
 
-  const editable = canEdit && EDITABLE_STATUSES.includes(report.status);
+  // Can't edit reports at all -> plain text, no status excuse; blocked only by status ->
+  // the "can't be edited right now" message, because for them that is the reason (#64).
+  const mode = contentMode(canEdit, report.status);
+  const editable = mode === "edit";
 
   return (
     <div className="space-y-4">
@@ -226,19 +232,28 @@ export default function ReportDetailPage() {
 
       <div className="rounded border bg-white p-4">
         <h2 className="mb-2 font-medium">{t("reportContent")}</h2>
-        {!editable && (
-          <p className="mb-2 text-sm text-gray-600">
-            {t("cannotEditNow")} {t(`reportStatus.${report.status}` as LabelKey)}
-          </p>
+        {mode === "read_only" ? (
+          // The server's copy, not the textarea state: a stash left in this tab is not theirs.
+          <div className="whitespace-pre-wrap rounded border bg-gray-50 px-3 py-2 text-sm">
+            {savedText || "—"}
+          </div>
+        ) : (
+          <>
+            {mode === "status_blocked" && (
+              <p className="mb-2 text-sm text-gray-600">
+                {t("cannotEditNow")} {t(`reportStatus.${report.status}` as LabelKey)}
+              </p>
+            )}
+            <p className="mb-2 text-xs text-gray-500">{t("reportContentHelp")}</p>
+            <textarea
+              value={text}
+              onChange={onTextChange}
+              disabled={!editable}
+              rows={12}
+              className="w-full rounded border px-3 py-2 font-mono text-sm disabled:bg-gray-50 disabled:text-gray-600"
+            />
+          </>
         )}
-        <p className="mb-2 text-xs text-gray-500">{t("reportContentHelp")}</p>
-        <textarea
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          disabled={!editable}
-          rows={12}
-          className="w-full rounded border px-3 py-2 font-mono text-sm disabled:bg-gray-50 disabled:text-gray-600"
-        />
         {actionError && <p className="mt-2 text-sm text-red-700">{actionError}</p>}
         {editable && (
           <div className="mt-3 flex flex-wrap items-center gap-3">
@@ -331,12 +346,22 @@ export default function ReportDetailPage() {
       <div className="rounded border bg-white p-4">
         <h2 className="mb-2 font-medium">{t("versionHistory")}</h2>
         <ul className="space-y-2 text-sm">
-          {versions.map((v) => (
-            <li key={v.version} className="border-b pb-2 last:border-0">
-              <span className="font-medium">v{v.version}</span> — {v.change_note ?? "—"} ({t("by")}{" "}
-              {v.editor.name}, {new Date(v.created_at).toLocaleString(locale)})
-            </li>
-          ))}
+          {versions.map((v) => {
+            // System words in the reader's language; a person's comment exactly as typed (#71).
+            const line = versionLine(v);
+            return (
+              <li key={v.version} className="border-b pb-2 last:border-0">
+                <span className="font-medium">v{v.version}</span> —{" "}
+                {line.kind ? t(`versionKind.${line.kind}` as LabelKey) : (line.fallback ?? "—")}
+                {line.comment && (
+                  <>
+                    : <q className="whitespace-pre-wrap">{line.comment}</q>
+                  </>
+                )}{" "}
+                ({t("by")} {v.editor.name}, {new Date(v.created_at).toLocaleString(locale)})
+              </li>
+            );
+          })}
         </ul>
       </div>
 

@@ -1,9 +1,10 @@
 import uuid
 from datetime import date, datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.models.enums import ReportStatus, ReportType
+from app.models.enums import ReportChangeKind, ReportStatus, ReportType
+from app.services.report_history import describe
 
 
 class UserSummaryOut(BaseModel):
@@ -54,5 +55,16 @@ class ReportVersionOut(BaseModel):
     version: int
     content_json: dict
     editor: UserSummaryOut
-    change_note: str | None
+    # What happened, as a code the frontend words in the reader's language (#71), and the
+    # human comment exactly as typed. Rows from before #71 are mapped from change_note.
+    change_kind: ReportChangeKind | None = None
+    change_comment: str | None = None
+    change_note: str | None = None  # legacy sentence, kept so no recorded history is lost
     created_at: datetime
+
+    @model_validator(mode="after")
+    def _kind_from_legacy_note(self) -> "ReportVersionOut":
+        self.change_kind, self.change_comment = describe(
+            self.change_kind, self.change_comment, self.change_note
+        )
+        return self

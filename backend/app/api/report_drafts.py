@@ -20,7 +20,7 @@ from app.core.deps import require
 from app.core.rbac import Permission
 from app.llm.client import LlmUnavailable
 from app.models import Report, ReportCitation, ReportVersion, User
-from app.models.enums import ReportStatus, ReportType
+from app.models.enums import ReportChangeKind, ReportStatus, ReportType
 from app.schemas.report_draft import BriefingDraftIn, MonthlyDraftIn, ReportDraftOut
 from app.services import audit, briefing_note, monthly_report
 
@@ -60,7 +60,7 @@ def _save(
             version=1,
             content_json=content,
             edited_by=user.id,
-            change_note="First draft generated",
+            change_kind=ReportChangeKind.DRAFTED,
         )
     )
     for link in links:

@@ -92,6 +92,21 @@ class ReportStatus(StrEnum):
     EXPORTED = "EXPORTED"
 
 
+class ReportChangeKind(StrEnum):
+    """What happened in one report version, stored as a code (#71).
+
+    The words are the frontend's job, in the reader's language. A human comment (the
+    approver's reason for returning, an editor's note) is kept separately and verbatim.
+    """
+
+    CREATED = "created"
+    DRAFTED = "drafted"  # first draft written by the monthly/briefing generator
+    DRAFTED_FROM_QUESTION = "drafted_from_question"  # first draft of a PQ reply
+    EDITED = "edited"
+    APPROVED = "approved"
+    RETURNED = "returned"
+
+
 class QaRoute(StrEnum):
     NUMERIC = "NUMERIC"
     TEXTUAL = "TEXTUAL"
