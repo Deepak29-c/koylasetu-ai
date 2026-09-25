@@ -84,6 +84,7 @@ _PRIMARY = [
 _TARGET = _rx(r"\btargets?\b|\baap\b|लक्ष्य")
 _ANNUAL = _rx(r"\bannual\b|\byearly\b|वार्षिक")
 _ACTUAL = _rx(r"\bactuals?\b|\bachieved\b|वास्तविक")
+_MONTHLY = _rx(r"\bmonthly\b|\bfor\s+the\s+month\b|मासिक")
 _NON_COKING = _rx(r"\bnon\s*-?\s*coking|गैर\s*-?\s*कोकिंग|नॉन\s*-?\s*कोकिंग")
 _COKING = _rx(r"\bcoking\b|कोकिंग")
 _LIGNITE = _rx(r"\blignite|लिग्नाइट")
@@ -442,7 +443,28 @@ def facts_from_table(
                     bbox=box or table_bbox,
                 )
             )
+    _date_targets(drafts, col_labels)
     return _drop_hidden_breakdowns(drafts)
+
+
+def _date_targets(drafts: list[FactDraft], col_labels: dict[int, _Label]) -> None:
+    """A "Monthly Target" / "Annual Target" column usually names no period: the month is in
+    the other columns ("Production during Dec" + "FY 25"). Such a target belongs to the latest
+    month in the same table (the current year's column), or to that month's FY for an annual
+    target. Without this, monthly reports could never find their target (guide W5)."""
+    months = [d.period for d in drafts if d.period_type == PeriodType.MONTH and d.period]
+    if not months:
+        return
+    latest = max(months)
+    for d in drafts:
+        if d.metric != Metric.PRODUCTION_TARGET or d.period is not None:
+            continue
+        label = col_labels.get(d.col)
+        text = label.text if label else ""
+        if _MONTHLY.search(text):
+            d.period_type, d.period = PeriodType.MONTH, latest
+        elif label is not None and label.signals.annual:
+            d.period_type, d.period = PeriodType.FY, fy_of_month(latest)
 
 
 def _tidy(value: float) -> float:
