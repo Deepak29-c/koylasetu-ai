@@ -38,6 +38,10 @@ NO_FACTS_NOTE = (
     "No verified figure for this was found in the facts database. From the document text "
     "(check the figure against its source): "
 )
+NO_FACTS_NOTE_HI = (
+    "तथ्य डेटाबेस में इसका कोई सत्यापित आँकड़ा नहीं मिला। दस्तावेज़ के पाठ से (आँकड़े को उसके "
+    "स्रोत से मिला लें): "
+)
 SYSTEM_PROMPT = (Path(__file__).parent.parent / "llm" / "prompts" / "answer_system.txt").read_text(
     encoding="utf-8"
 )
@@ -165,11 +169,86 @@ def template_answer(facts: list[FactRow]) -> str:
         what = sorted({METRIC_LABELS.get(f.metric, f.metric) for f in facts})
         periods = sorted({f.period_text for f in facts})
         refs = "".join(f"[{f.ref}]" for f in facts)
-        lead = f"The {' and '.join(what)} figures for {', '.join(periods)}"
+        when = ", ".join(periods)
+        lead = (
+            f"The {' and '.join(what)} figures {'' if when.startswith('as on') else 'for '}{when}"
+        )
         return f"{lead} are given in the table below. {refs}"
     return " ".join(
         f"{f.who} {fact_line(f).split(' | ')[1]}, {f.period_text}: {fact_value(f)}"
         f"{'' if f.status == 'VERIFIED' else ' (unverified)'} [{f.ref}]."
+        for f in facts
+    )
+
+
+# Hindi wording for the plain sentence (template_answer_hi). Figures, units and ids stay as is.
+METRIC_LABELS_HI = {
+    "coal_production": "कोयला उत्पादन",
+    "coking_coal_production": "कोकिंग कोयला उत्पादन",
+    "coal_offtake": "कोयला प्रेषण (उठाव)",
+    "production_target": "उत्पादन लक्ष्य",
+    "ob_removal": "ओबी (अधिभार) निष्कासन",
+    "coal_resource": "कोयला संसाधन",
+    "coal_import": "कोयला आयात",
+}
+CATEGORY_HI = {"measured": "मापित", "indicated": "संकेतित", "inferred": "अनुमानित"}
+WHO_HI = {
+    "CIL": "सीआईएल",
+    "ECL": "ईसीएल",
+    "BCCL": "बीसीसीएल",
+    "CCL": "सीसीएल",
+    "NCL": "एनसीएल",
+    "WCL": "डब्ल्यूसीएल",
+    "SECL": "एसईसीएल",
+    "MCL": "एमसीएल",
+    "NEC": "एनईसी",
+    "SCCL": "एससीसीएल",
+    "INDIA": "अखिल भारत",
+    "CAPTIVE": "कैप्टिव/अन्य",
+}
+MONTHS_HI = "जनवरी फरवरी मार्च अप्रैल मई जून जुलाई अगस्त सितंबर अक्टूबर नवंबर दिसंबर".split()
+UNVERIFIED_HI = " (असत्यापित)"
+
+
+def _month_hi(period: str | None) -> str:
+    y, m = (period or "0000-01").split("-")[:2]
+    return f"{MONTHS_HI[int(m) - 1]} {y}"
+
+
+def period_hi(f: FactRow) -> str:
+    """The period as a Hindi phrase that leads the sentence ("दिसंबर 2024 में")."""
+    if f.period_type == "YTD":
+        return f"अप्रैल से {_month_hi(f.period)} तक (संचयी)"
+    if f.period_type == "MONTH":
+        if f.metric == "coal_resource":
+            return f"{_month_hi(f.period)} की स्थिति के अनुसार"
+        return f"{_month_hi(f.period)} में"
+    if f.period_type == "AS_ON" and f.period:
+        y, m, d = f.period.split("-")
+        return f"{d}.{m}.{y} की स्थिति के अनुसार"
+    if f.period and f.period.startswith("FY "):
+        return f"वित्त वर्ष {f.period[3:]} में"
+    return "अवधि अज्ञात"
+
+
+def metric_hi(f: FactRow) -> str:
+    what = METRIC_LABELS_HI.get(f.metric, f.metric)
+    if f.category:
+        what = f"{CATEGORY_HI.get(f.category.lower().split()[0], f.category)} {what}"
+    return what
+
+
+def template_answer_hi(facts: list[FactRow]) -> str:
+    """template_answer in Hindi, for a Hindi question on the NUMERIC route. Built by code, not
+    the model: a small model's Hindi is unreliable and the figures must be copied exactly."""
+    if len(facts) > TABLE_ONLY_ROWS:
+        what = " और ".join(sorted({METRIC_LABELS_HI.get(f.metric, f.metric) for f in facts}))
+        periods = ", ".join(sorted({period_hi(f) for f in facts}))
+        refs = "".join(f"[{f.ref}]" for f in facts)
+        return f"{periods} {what} के आँकड़े नीचे दी गई तालिका में हैं। {refs}"
+    return " ".join(
+        f"{period_hi(f)} {WHO_HI.get(f.subsidiary or '', f.who)} का {metric_hi(f)}: "
+        f"{fact_value(f)}{'' if f.status == 'VERIFIED' else UNVERIFIED_HI} [{f.ref}]।"
         for f in facts
     )
 
@@ -186,6 +265,27 @@ def usable_numeric_answer(text: str, facts: list[FactRow]) -> bool:
         return False
     cited = set(_CITED.findall(normalise_citations(text, 0, len(facts))))
     return bool(cited & {f.ref for f in facts})
+
+
+_NOT_FOUND_ANY = re.compile(
+    rf"(?:{re.escape(NOT_FOUND.rstrip('.'))}|{re.escape(NOT_FOUND_HI.rstrip('।'))})[.।]?", re.I
+)
+_NOT_FOUND_WITH_CITATION = re.compile(rf"({_NOT_FOUND_ANY.pattern})(?:\s*\[\s*[CF]\d+\s*\])+", re.I)
+
+
+def is_not_found(text: str) -> bool:
+    return bool(_NOT_FOUND_ANY.search(text))
+
+
+def clean_not_found(text: str, hindi: bool) -> str:
+    """A not-found reply carries no citation: a small model often adds one anyway ("Not found
+    in the available documents. [F1]"), which would link a source that says nothing. A reply
+    that is only "not found" becomes the standard message in the question's language; a
+    not-found sentence inside a longer reply just loses the ids stuck to it."""
+    rest = _NOT_FOUND_ANY.sub("", _CITED.sub("", text))
+    if is_not_found(text) and not re.sub(r"[\s.।\"'“”]", "", rest):
+        return NOT_FOUND_HI if hindi else NOT_FOUND
+    return _NOT_FOUND_WITH_CITATION.sub(r"\1", text)
 
 
 def facts_table(facts: list[FactRow]) -> dict:
@@ -233,8 +333,11 @@ def ask(
     passages = retrieve(db, user, question) if kind in (QaRoute.TEXTUAL, QaRoute.MIXED) else []
 
     table = facts_table(facts) if facts else None
+    hindi = is_hindi(question)
     if not facts and not passages:
-        text = NOT_FOUND_HI if is_hindi(question) else NOT_FOUND
+        text = NOT_FOUND_HI if hindi else NOT_FOUND
+    elif kind == QaRoute.NUMERIC and hindi:
+        text = template_answer_hi(facts)  # figures in the question's language, built by code
     elif kind == QaRoute.NUMERIC and len(facts) > TABLE_ONLY_ROWS:
         text = template_answer(facts)  # many figures: the table is the answer
     else:
@@ -246,12 +349,12 @@ def ask(
             raw = template_answer(facts)  # figures don't need the model to be stated
         if kind == QaRoute.NUMERIC and not usable_numeric_answer(raw, facts):
             raw = template_answer(facts)
-        text = normalise_citations(raw, len(passages), len(facts))
+        text = clean_not_found(normalise_citations(raw, len(passages), len(facts)), hindi)
 
-    not_found = NOT_FOUND.lower().rstrip(".") in text.lower() or NOT_FOUND_HI in text
+    not_found = is_not_found(text)
     if fell_back and not not_found:
         # A figure from free text was not checked against a table row: say so plainly.
-        text = NO_FACTS_NOTE + text
+        text = (NO_FACTS_NOTE_HI if hindi else NO_FACTS_NOTE) + text
     by_ref: dict[str, Source] = {p.ref: p for p in passages} | {f.ref: f for f in facts}
     cited_refs = list(dict.fromkeys(r for r in _CITED.findall(text) if r in by_ref))
     citations = [by_ref[r] for r in cited_refs]
@@ -377,7 +480,7 @@ def replay(db: Session, log: QaLog, user: User) -> Answer:
     text = log.answer or ""
     sources = [p.text for p in passages] + [fact_line(f) for f in facts] + [log.question]
     unmatched = grounding.check(text, sources)
-    not_found = NOT_FOUND.lower().rstrip(".") in text.lower() or NOT_FOUND_HI in text
+    not_found = is_not_found(text)
     return Answer(
         qa_id=log.id,
         answer=text,

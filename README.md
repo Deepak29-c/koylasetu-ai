@@ -39,6 +39,13 @@ Built so far:
 - The model writes the sentence from DATA rows [F1]…; broken wording falls back to a plain
   sentence built from the rows; more than 6 rows become a table; works without the model
 - No matching facts: falls back to the text route and says so in the answer
+- Hindi figure questions: Devanagari company names and codes (सीआईएल, एनसीएल, नॉर्दर्न
+  कोलफील्ड्स…, in the shared alias map), Hindi metric words (उत्पादन, प्रेषण/उठाव, लक्ष्य, ओबी,
+  आयात, संसाधन), Hindi months and digits. The answer is a Hindi sentence built from the rows
+  by code (no model call); figures, units and [F1] ids unchanged
+- English paraphrases: "dig out / mined / raised / extracted / output" = production,
+  "dispatched / supplied / lifted / sent" = despatch; "how much" is a figure, not a "how"
+- A not-found reply carries no citation ids and no sources, in the question's language
 - Ask screen: figures table under the answer; each figure links to its page with the exact
   cell highlighted
 

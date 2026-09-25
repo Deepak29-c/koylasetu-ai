@@ -327,6 +327,17 @@ def test_many_figures_become_a_table_without_calling_the_model():
     assert len(result.citations) == 8 and result.grounded and len(result.table["rows"]) == 8
 
 
+def test_table_lead_reads_well_for_as_on_resources():
+    rows = [
+        fact_row(f"F{i}", None, "coal_resource", "2025-04", f"{i}.5")
+        for i in range(1, qa.TABLE_ONLY_ROWS + 2)
+    ]
+    assert qa.template_answer(rows).startswith("The coal resource figures as on Apr 2025 are")
+    assert "figures for Dec 2024" in qa.template_answer(
+        [fact_row(f"F{i}", "NCL", "coal_production", "2024-12", "1") for i in range(1, 9)]
+    )
+
+
 def test_model_down_still_answers_figures():
     def down(*_):
         raise client.LlmUnavailable("no model")
@@ -382,3 +393,87 @@ def test_good_model_wording_is_kept():
     good = "NCL produced 12.70 MT in Dec 2024 [F1] against a target of 12.16 MT [F2]."
     result, _, _ = ask_numeric(Q_NCL, NCL, good)
     assert result.answer == good
+
+
+# --- Hindi figures and not-found replies (#7) -----------------------------------------------------
+
+Q_CIL_HI = "दिसंबर 2024 में सीआईएल का कोयला उत्पादन कितना था?"
+
+
+def test_hindi_figure_question_is_answered_in_hindi_by_code():
+    cil = [fact_row("F1", "CIL", "coal_production", "2024-12", "72.37", status="FLAGGED")]
+    result, log, seen = ask_numeric(Q_CIL_HI, cil, "unused")
+    assert "prompt" not in seen  # the sentence is built from the row, not by the model
+    assert result.route == "NUMERIC"
+    assert result.answer == "दिसंबर 2024 में सीआईएल का कोयला उत्पादन: 72.37 MT (असत्यापित) [F1]।"
+    assert result.grounded and [c.ref for c in result.citations] == ["F1"]
+    assert result.confidence == "high" and "subsidiary=CIL" in log.sql
+
+
+def test_hindi_sentence_for_each_period_kind():
+    rows = [
+        fact_row("F1", "NCL", "coal_production", "2024-12", "12.70"),
+        fact_row("F2", "NCL", "production_target", "2024-12", "12.16"),
+        fact_row("F3", "MCL", "coal_offtake", "2024-12", "157.82", period_type="YTD"),
+        fact_row("F4", "INDIA", "coal_production", "FY 2023-24", "997.83", period_type="FY"),
+    ]
+    text = qa.template_answer_hi(rows)
+    assert "दिसंबर 2024 में एनसीएल का कोयला उत्पादन: 12.70 MT [F1]।" in text
+    assert "दिसंबर 2024 में एनसीएल का उत्पादन लक्ष्य: 12.16 MT [F2]।" in text
+    assert "अप्रैल से दिसंबर 2024 तक (संचयी) एमसीएल का कोयला प्रेषण (उठाव): 157.82 MT [F3]।" in text
+    assert "वित्त वर्ष 2023-24 में अखिल भारत का कोयला उत्पादन: 997.83 MT [F4]।" in text
+
+
+def test_many_hindi_figures_point_to_the_table():
+    rows = [
+        fact_row(f"F{i}", s, "coal_production", "2024-12", f"{i}.5")
+        for i, s in enumerate(["ECL", "BCCL", "CCL", "NCL", "WCL", "SECL", "MCL", "NEC"], 1)
+    ]
+    text = qa.template_answer_hi(rows)
+    assert text.startswith("दिसंबर 2024 में कोयला उत्पादन के आँकड़े नीचे दी गई तालिका में हैं।")
+    assert text.endswith("[F1][F2][F3][F4][F5][F6][F7][F8]")
+
+
+def test_english_figure_question_still_uses_the_model_wording():
+    good = "NCL produced 12.70 MT in Dec 2024 [F1] against a target of 12.16 MT [F2]."
+    result, _, seen = ask_numeric(Q_NCL, NCL, good)
+    assert "prompt" in seen and result.answer == good
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "Not found in the available documents. [F1]",
+        "Not found in the available documents. [C2]",
+        "Not found in the available documents [C1][C2].",
+        '"Not found in the available documents." (C1)',
+    ],
+)
+def test_not_found_reply_loses_its_citation(raw):
+    result, log = run(raw)
+    assert result.answer == qa.NOT_FOUND
+    assert result.not_found and result.citations == [] and log.citations_json == []
+
+
+def test_not_found_reply_to_a_hindi_question_is_in_hindi():
+    db = FakeDb()
+    result = qa.ask(
+        db,
+        USER,
+        "बिजली संयंत्रों में कोयले की कमी के बारे में बताइए",
+        retrieve=lambda *_: PASSAGES,
+        llm=lambda s, u: "Not found in the available documents. [C1]",
+    )
+    assert result.answer == qa.NOT_FOUND_HI and result.not_found and result.citations == []
+
+
+def test_not_found_sentence_inside_a_longer_reply_keeps_the_other_citations():
+    text = qa.clean_not_found(
+        "Stock was 7.2 MT [C1]. Not found in the available documents. [C2]", hindi=False
+    )
+    assert text == "Stock was 7.2 MT [C1]. Not found in the available documents."
+
+
+def test_numeric_fallback_to_text_for_hindi_says_so_in_hindi():
+    result, _, _ = ask_numeric(Q_CIL_HI, [], "भंडार 7.2 MT था [C1]।", passages=PASSAGES)
+    assert result.route == "TEXTUAL" and result.answer.startswith(qa.NO_FACTS_NOTE_HI)
