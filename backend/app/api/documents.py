@@ -1,4 +1,5 @@
 import io
+import logging
 import uuid
 from pathlib import Path
 
@@ -22,6 +23,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.db import get_db
 from app.core.deps import require, scope_to_user, sees_all_units
+from app.core.errors import CodedError
 from app.core.rbac import Permission, Role
 from app.models import Chunk, Document, ExtractedTable, Fact, Page, ReviewActionLog, User
 from app.models.enums import DocType, DocumentStatus, Metric
@@ -33,9 +35,11 @@ from app.schemas.document import (
     TableOut,
     UploadResult,
 )
-from app.services import audit, file_types, storage
+from app.services import audit, failures, file_types, storage
 from app.services.normalise import normalise_fy
 from app.services.queue import enqueue_ingest
+
+log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -187,17 +191,46 @@ def get_document(
     return _get_scoped(db, document_id, user)
 
 
+def _original(doc: Document) -> Path:
+    """The document's original file, or a handled 404 naming the document when it is gone
+    (#69). Unhandled, the missing file used to surface as a 500 without CORS headers, which
+    the browser reported as "cannot reach the server"."""
+    if failures.original_is_missing(doc.file_path):
+        log.warning("Document %s: original file missing at %s", doc.id, doc.file_path)
+        raise CodedError(
+            status.HTTP_404_NOT_FOUND,
+            "file_missing",
+            f'The original file for "{doc.title}" could not be found on the server. '
+            "Please upload it again.",
+        )
+    return Path(doc.file_path)
+
+
+def _unreadable(doc: Document, exc: Exception) -> CodedError:
+    """A 422 for an original that exists but cannot be opened; the detail goes to the log."""
+    log.warning("Document %s: original file unreadable: %r", doc.id, exc)
+    return CodedError(
+        status.HTTP_422_UNPROCESSABLE_CONTENT,
+        "damaged_file",
+        f'The original file for "{doc.title}" is damaged or could not be opened. '
+        "Please upload a fresh copy.",
+    )
+
+
 def _page_size(doc: Document, page_no: int) -> tuple[float | None, float | None]:
-    path = Path(doc.file_path)
-    if doc.mime_type == "application/pdf":
-        with pymupdf.open(path) as pdf:
-            rect = pdf[page_no - 1].rect
-            return rect.width, rect.height
-    if doc.mime_type.startswith("image/"):
+    if doc.mime_type != "application/pdf" and not doc.mime_type.startswith("image/"):
+        return None, None
+    path = _original(doc)
+    try:
+        if doc.mime_type == "application/pdf":
+            with pymupdf.open(path) as pdf:
+                rect = pdf[page_no - 1].rect
+                return rect.width, rect.height
         with Image.open(path) as img:
             img.seek(page_no - 1)
             return float(img.width), float(img.height)
-    return None, None
+    except Exception as exc:  # corrupt file, wrong format, page no longer there
+        raise _unreadable(doc, exc) from None
 
 
 @router.get("/{document_id}/pages/{page_no}", response_model=PageOut)
@@ -272,18 +305,21 @@ def get_page_image(
     doc = _get_scoped(db, document_id, user)
     if not doc.page_count or not 1 <= page_no <= doc.page_count:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No such page")
-    path = Path(doc.file_path)
-    if doc.mime_type == "application/pdf":
-        with pymupdf.open(path) as pdf:
-            png = pdf[page_no - 1].get_pixmap(dpi=dpi).tobytes("png")
-    elif doc.mime_type.startswith("image/"):
-        with Image.open(path) as img:
-            img.seek(page_no - 1)
-            buf = io.BytesIO()
-            img.convert("RGB").save(buf, "PNG")
-            png = buf.getvalue()
-    else:
+    if doc.mime_type != "application/pdf" and not doc.mime_type.startswith("image/"):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "This file type has no page images")
+    path = _original(doc)
+    try:
+        if doc.mime_type == "application/pdf":
+            with pymupdf.open(path) as pdf:
+                png = pdf[page_no - 1].get_pixmap(dpi=dpi).tobytes("png")
+        else:
+            with Image.open(path) as img:
+                img.seek(page_no - 1)
+                buf = io.BytesIO()
+                img.convert("RGB").save(buf, "PNG")
+                png = buf.getvalue()
+    except Exception as exc:  # corrupt file, wrong format, page no longer there
+        raise _unreadable(doc, exc) from None
     return Response(png, media_type="image/png", headers={"Cache-Control": "private, max-age=3600"})
 
 

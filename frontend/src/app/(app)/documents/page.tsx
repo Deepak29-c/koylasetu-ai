@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { useMe } from "@/components/AppShell";
 import { api, type DocumentRow, type DocumentStatus } from "@/lib/api";
-import { type LabelKey, useT } from "@/lib/i18n";
+import { errorText, failureKey, type LabelKey, useT } from "@/lib/i18n";
 
 const STATUS_STYLE: Record<DocumentStatus, string> = {
   UPLOADED: "bg-gray-100 text-gray-800",
@@ -19,7 +19,8 @@ export default function DocumentsPage() {
   const me = useMe();
   const { t, locale } = useT();
   const [docs, setDocs] = useState<DocumentRow[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  // The error itself, not its text: translated when shown, so switching language updates it.
+  const [error, setError] = useState<unknown>(null);
   const allowed = me.permissions.includes("view_processing");
 
   const load = useCallback(
@@ -29,7 +30,7 @@ export default function DocumentsPage() {
           setDocs(rows);
           setError(null);
         },
-        (e: unknown) => setError(e instanceof Error ? e.message : String(e)),
+        (e: unknown) => setError(e),
       ),
     [],
   );
@@ -49,15 +50,17 @@ export default function DocumentsPage() {
       await api(`/documents/${id}/retry`, { method: "POST" });
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(e);
     }
   }
 
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-semibold">{t("documents")}</h1>
-      {error && <p className="rounded border border-red-300 bg-red-50 p-3 text-red-800">{error}</p>}
-      {docs === null && !error && <p className="text-gray-500">{t("loading")}</p>}
+      {error != null && (
+        <p className="rounded border border-red-300 bg-red-50 p-3 text-red-800">{errorText(error, t)}</p>
+      )}
+      {docs === null && error == null && <p className="text-gray-500">{t("loading")}</p>}
       {docs?.length === 0 && <p className="text-gray-600">{t("noDocuments")}</p>}
       {docs && docs.length > 0 && (
         <div className="overflow-x-auto rounded border bg-white">
@@ -77,14 +80,22 @@ export default function DocumentsPage() {
               {docs.map((d) => (
                 <tr key={d.id} className="border-t align-top">
                   <td className="px-4 py-2">
-                    {d.status === "PROCESSED" && d.page_count ? (
+                    {d.status === "PROCESSED" && d.page_count && !d.file_missing ? (
                       <Link href={`/documents/${d.id}?page=1`} className="font-medium text-brand hover:underline">
                         {d.title}
                       </Link>
                     ) : (
                       <div className="font-medium">{d.title}</div>
                     )}
-                    {d.error_message && <div className="text-xs text-red-700">{d.error_message}</div>}
+                    {d.failure_reason && (
+                      <div className="text-xs text-red-700">
+                        {/* A translated reason, never the raw exception or a server path (#70). */}
+                        {(() => {
+                          const key = failureKey(d.failure_reason);
+                          return key ? t(key) : d.failure_message;
+                        })()}
+                      </div>
+                    )}
                   </td>
                   <td className="px-4 py-2">{t(`doc.${d.doc_type}` as LabelKey)}</td>
                   <td className="px-4 py-2">{d.fy ?? "—"}</td>
