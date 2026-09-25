@@ -102,6 +102,7 @@ def a_report(status=ReportStatus.IN_REVIEW):
         title="PQ 123",
         status=status,
         content_json={"text": "Reply"},
+        pq_id=None,
         org_unit_id=uuid.uuid4(),
         created_by=uuid.uuid4(),
         approver_id=None,
