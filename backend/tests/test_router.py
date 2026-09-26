@@ -178,3 +178,14 @@ def test_despatch_question_and_bare_metric():
 
 def test_raised_in_other_senses_is_not_production():
     assert extract_filters("Issues raised by NCL workers in 2023-24").metrics == []
+
+
+def test_states_or_a_breakdown_win_over_the_country_total():
+    # A PQ subject such as "Coal Resources of the Country" is added to every part
+    f = extract_filters(
+        "Coal Resources of the Country: the measured coal resources of Odisha and Jharkhand"
+    )
+    assert f.states == ["Jharkhand", "Odisha"] and "INDIA" not in f.subsidiaries
+    f = extract_filters("the state-wise coal resources of the country as on 01.04.2025")
+    assert f.breakdown and f.subsidiaries == []
+    assert extract_filters("total coal resources of the country").subsidiaries == ["INDIA"]
