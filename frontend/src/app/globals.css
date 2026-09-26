@@ -64,6 +64,15 @@
   --sidebar-active: rgb(255 255 255 / 0.16);
   --sidebar-text: rgb(255 255 255 / 0.78);
 
+  /* Map (#97): a navy ramp for figures, light = less; states without a figure stay grey */
+  --map-1: #dbe7f5;
+  --map-2: #a9c4e5;
+  --map-3: #6c97cc;
+  --map-4: #34629f;
+  --map-5: #0b2e59;
+  --map-none: #eef1f5;
+  --map-stroke: #ffffff;
+
   /* Overlays */
   --scrim: rgb(10 18 32 / 0.42);
 }

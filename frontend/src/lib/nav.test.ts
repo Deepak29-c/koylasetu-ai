@@ -35,14 +35,14 @@ const NEW_REPORTS = ["/pq-replies/new", "/monthly-reports/new", "/briefing-notes
 
 const EXPECTED: Record<string, string[]> = {
   admin: [
-    "/", "/ask", "/reports", "/upload", "/documents", "/review", "/topics", "/metrics",
+    "/", "/ask", "/reports", "/upload", "/documents", "/review", "/map", "/topics", "/metrics",
     "/admin/users", "/admin/templates", "/admin/rules", "/audit",
   ],
-  operator: ["/", "/ask", "/upload", "/documents", "/topics"],
-  reviewer: ["/", "/ask", "/upload", "/documents", "/review", "/topics"],
-  analyst: ["/", "/ask", "/reports", ...NEW_REPORTS, "/documents", "/topics"],
-  approver: ["/", "/ask", "/reports", "/approvals", ...NEW_REPORTS, "/topics", "/metrics", "/audit"],
-  viewer: ["/", "/ask", "/reports", "/topics"],
+  operator: ["/", "/ask", "/upload", "/documents", "/map", "/topics"],
+  reviewer: ["/", "/ask", "/upload", "/documents", "/review", "/map", "/topics"],
+  analyst: ["/", "/ask", "/reports", ...NEW_REPORTS, "/documents", "/map", "/topics"],
+  approver: ["/", "/ask", "/reports", "/approvals", ...NEW_REPORTS, "/map", "/topics", "/metrics", "/audit"],
+  viewer: ["/", "/ask", "/reports", "/map", "/topics"],
 };
 
 const hrefs = (permissions: string[]) => visibleNav(permissions).flatMap((g) => g.items.map((i) => i.href));
@@ -55,7 +55,7 @@ for (const [role, expected] of Object.entries(EXPECTED)) {
 
 test("a user with several roles sees what any of them allows", () => {
   const both = [...new Set([...ROLE_PERMISSIONS.operator, ...ROLE_PERMISSIONS.viewer])];
-  assert.deepEqual(hrefs(both), ["/", "/ask", "/reports", "/upload", "/documents", "/topics"]);
+  assert.deepEqual(hrefs(both), ["/", "/ask", "/reports", "/upload", "/documents", "/map", "/topics"]);
 });
 
 test("no permissions leaves only Home, and empty groups are dropped", () => {

@@ -18,6 +18,7 @@ from app.models.enums import DocType, DocumentStatus
 from app.services import failures
 from app.services.queue import enqueue_topics_refresh
 from worker import parse
+from worker.depth import extract_depth
 from worker.embed import embed_document, page_chunks
 from worker.extract import extract_table, llm_classifier
 from worker.ocr import get_ocr
@@ -95,6 +96,13 @@ def run_pipeline(db, doc: Document) -> None:
         db.commit()  # one commit per page, so the Documents screen shows live progress
 
     log.info("Document %s: %d facts from tables", doc.id, total_facts)
+    try:
+        extract_depth(db, doc)  # the inventory's state-wise depth table, if it has one
+        db.commit()
+    except Exception:
+        # A depth table we can't read must not fail the document; its facts are fine
+        db.rollback()
+        log.exception("Document %s: depth table not read", doc.id)
     open_issues = validate_document(db, doc.id)
     db.commit()
     embedded = embed_document(db, doc.id)

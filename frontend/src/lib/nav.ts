@@ -40,6 +40,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     label: "nav.insights",
     items: [
+      { href: "/map", label: "map.title", needs: ["ask_questions"] },
       { href: "/topics", label: "topics", needs: ["view_topics"] },
       { href: "/metrics", label: "nav.metrics", needs: ["view_metrics"] },
     ],

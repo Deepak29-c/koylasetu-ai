@@ -8,6 +8,7 @@ from app.api import (
     auth,
     dashboard,
     documents,
+    map,
     metrics,
     pq_replies,
     qa,
@@ -55,6 +56,7 @@ app.include_router(pq_replies.export_router)
 app.include_router(similar_pq.router)
 app.include_router(topics.router)
 app.include_router(dashboard.router)
+app.include_router(map.router)
 app.include_router(metrics.router)
 app.include_router(admin.router)
 

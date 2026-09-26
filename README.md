@@ -213,6 +213,26 @@ Measured on the demo PC (CPU only, `qwen2.5:3b-instruct`): about 30-55 s for a t
   (`POST /topics/refresh`); by hand `python -m worker.topics --force`
 - `GET /topics/wordcloud?house=LS&from=2019&to=2025`, `GET /topics`, `GET /topics/{id}/questions`
 
+**Map** (#97), Map screen ([docs/MAP_VIEW.md](docs/MAP_VIEW.md)):
+- India's states drawn as inline SVG from a bundled boundary file (DataMeet, Survey of India
+  lines, CC BY 4.0, credited on screen): no map library, no tile server, works offline
+- Coal resources: states shaded by value (5 shades by quantile), Total / Measured / Indicated /
+  Inferred, per period; production, offtake and coking coal: a circle per CIL subsidiary + SCCL
+  at its headquarters, area in proportion to the value
+- Click a state, circle or list row: value, the cell as printed, verified / not verified, and
+  a link to the source page; side list ranks every place with its share
+- `GET /map/figures?metric=coal_resource&category=Measured&period=2024-04`: same rules as the
+  NUMERIC route (user's units, no REJECTED or unconverted facts, verified wins); facts with no
+  period are left out; an unknown period falls back to the newest
+- Depth: a Depth picker shades states by one band (0-300 / 300-600 / 600-1200 m, and Jharia's
+  0-600 m), and the side panel shows a state's (or all India's) resources by depth, split into
+  Measured / Indicated / Inferred. `GET /map/depth?state=Jharkhand`, `GET /map/figures?depth=0-300`
+- Depth figures are read by `worker/depth.py` from the inventory's "State-wise and depth-wise
+  resource" table (Table II) in the PDF's text layer, into `depth_resources` (one row per printed
+  line, cells kept as printed; not in `facts`, so no existing total is double counted). A row is
+  kept only if M + I + Inferred = Total, a block only if its bands add up to its total row. Runs
+  during ingestion; for documents processed before, `python -m worker.depth <document id>`
+
 **Benchmark set** (guide 15.2, issue #16): `eval/pq_benchmark.jsonl` holds 34 real Lok Sabha
 coal questions (2018-2022) with the official written answer, the key figures in it (183 in
 all: value, unit and, for figures from tables or easy to confuse, an optional `label`), a topic

@@ -820,3 +820,77 @@ export type MetricsOut = {
 export function getMetrics(): Promise<MetricsOut> {
   return api<MetricsOut>("/metrics");
 }
+
+export type MapFigures = {
+  metric: "coal_resource" | "coal_production" | "coal_offtake" | "coking_coal_production";
+  level: "state" | "subsidiary";
+  unit: string;
+  category: string | null;
+  /** The period shown; null when there are no figures at all. */
+  period: string | null;
+  period_type: string | null;
+  /** Every period with figures for this metric and category, newest first. */
+  periods: string[];
+  /** The depth band shown ("0-300"); null = all depths. */
+  depth: string | null;
+  /** Depth bands resources can be split into; empty when no depth table was read. */
+  depths: string[];
+  items: {
+    key: string; // state name or subsidiary code
+    value: number; // in `unit`
+    value_raw: string;
+    unit: string | null;
+    status: string;
+    fact_id: string | null;
+    document_id: string;
+    document_title: string;
+    page_no: number;
+  }[];
+};
+
+export function getMapFigures(q: {
+  metric: string;
+  category?: string;
+  period?: string;
+  depth?: string;
+}): Promise<MapFigures> {
+  const params = new URLSearchParams({ metric: q.metric });
+  if (q.category) params.set("category", q.category);
+  if (q.period) params.set("period", q.period);
+  if (q.depth) params.set("depth", q.depth);
+  return api<MapFigures>(`/map/figures?${params}`);
+}
+
+export type DepthBand = {
+  depth_range: string;
+  measured: number;
+  indicated: number;
+  inferred: number;
+  total: number;
+  /** The printed rows the band was read from (two for Assam: Gondwana + Tertiary). */
+  sources: {
+    document_id: string;
+    document_title: string;
+    page_no: number;
+    bbox: number[] | null;
+    label: string;
+    values_raw: string[];
+  }[];
+};
+
+export type DepthView = {
+  /** null = all India. */
+  state: string | null;
+  unit: string;
+  period: string | null;
+  periods: string[];
+  bands: DepthBand[];
+  total: number;
+};
+
+export function getDepth(q: { state?: string; period?: string }): Promise<DepthView> {
+  const params = new URLSearchParams();
+  if (q.state) params.set("state", q.state);
+  if (q.period) params.set("period", q.period);
+  return api<DepthView>(`/map/depth?${params}`);
+}
