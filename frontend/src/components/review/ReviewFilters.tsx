@@ -61,7 +61,7 @@ export default function ReviewFilters({
           ...SEVERITIES.map((s) => ({ value: s, label: t(`sev.${s}` as LabelKey), count: count(s) })),
         ]}
       />
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+      <div className="grid gap-3 sm:grid-cols-2">
         <Field label={t("review.ruleFilter")}>
           <Select value={value.rule} onChange={(e) => onChange({ ...value, rule: e.target.value })}>
             <option value="">{t("review.allRules")}</option>

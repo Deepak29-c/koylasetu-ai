@@ -21,7 +21,7 @@ export default function TopicList({ topics, selectedId, word, onSelect }: TopicL
   const { t, locale } = useT();
   const max = Math.max(1, ...topics.map((x) => x.size));
   return (
-    <ul className="max-h-[60vh] overflow-y-auto scroll-quiet space-y-2 pr-0.5">
+    <ul className="scroll-quiet max-h-[60vh] space-y-2 overflow-y-auto pr-0.5 lg:max-h-none lg:min-h-0 lg:flex-1">
       {topics.map((topic) => {
         const picked = topic.id === selectedId;
         return (

@@ -56,7 +56,7 @@ export default function DecidedList({
   }, [selectedId]);
 
   return (
-    <Card padded={false} className="flex flex-col">
+    <Card padded={false} className="flex flex-col xl:min-h-0 xl:flex-1">
       <div className="border-b border-line p-4">
         <CardHeader
           className="mb-0"
@@ -67,7 +67,7 @@ export default function DecidedList({
       <ul
         ref={listRef}
         aria-label={t("reviewTabDecided")}
-        className="max-h-[40vh] space-y-2 overflow-y-auto scroll-quiet p-3 xl:max-h-[70vh]"
+        className="scroll-quiet max-h-[40vh] space-y-2 overflow-y-auto p-3 xl:max-h-none xl:min-h-0 xl:flex-1"
       >
         {items.map((item) => {
           const f = item.fact;
@@ -101,7 +101,7 @@ export default function DecidedList({
           );
         })}
       </ul>
-      {footer && <div className="border-t border-line px-4 py-3">{footer}</div>}
+      {footer && <div className="border-t border-line px-4 py-3 xl:[@media(max-height:1000px)]:hidden">{footer}</div>}
     </Card>
   );
 }

@@ -245,53 +245,57 @@ export default function TopicsPage() {
         )}
       </Card>
 
-      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
-        <Card>
-          <CardHeader
-            title={t("topTopics")}
-            subtitle={
-              run && run.topics.length > 0
-                ? `${formatNumber(visibleTopics.length, locale)} / ${formatNumber(run.topics.length, locale)} ${t("topics.topicCount")}`
-                : undefined
-            }
-            icon={<ListTree />}
-            actions={wordChip}
-          />
-          {topicsError ? (
-            <Alert
-              tone="danger"
-              title={t("topics.topicsFailed")}
-              action={
-                <Button variant="outline" size="sm" onClick={retryTopics}>
-                  {t("retry")}
-                </Button>
+      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:items-stretch">
+        {/* On wide screens the topic list takes exactly the height of the right column and
+            scrolls inside, instead of ending early and leaving a blank area. */}
+        <div className="min-w-0 lg:relative">
+          <Card className="lg:absolute lg:inset-0">
+            <CardHeader
+              title={t("topTopics")}
+              subtitle={
+                run && run.topics.length > 0
+                  ? `${formatNumber(visibleTopics.length, locale)} / ${formatNumber(run.topics.length, locale)} ${t("topics.topicCount")}`
+                  : undefined
               }
-            >
-              {topicsError}
-            </Alert>
-          ) : !run ? (
-            <ListSkeleton rows={5} className="h-20" />
-          ) : run.topics.length === 0 ? (
-            <EmptyState compact icon={<ListTree />} title={t("noTopicsYet")}>
-              {isAdmin ? t("topics.noTopicsAdminHint") : undefined}
-            </EmptyState>
-          ) : visibleTopics.length === 0 ? (
-            <EmptyState
-              compact
               icon={<ListTree />}
-              title={t("topics.noTopicsForWord")}
-              action={
-                <Button variant="outline" size="sm" onClick={() => pickWord(word ?? "")}>
-                  {t("topics.removeWordFilter")}
-                </Button>
-              }
-            >
-              {t("topics.noTopicsForWordHint")}
-            </EmptyState>
-          ) : (
-            <TopicList topics={visibleTopics} selectedId={selected?.id} word={word} onSelect={selectTopic} />
-          )}
-        </Card>
+              actions={wordChip}
+            />
+            {topicsError ? (
+              <Alert
+                tone="danger"
+                title={t("topics.topicsFailed")}
+                action={
+                  <Button variant="outline" size="sm" onClick={retryTopics}>
+                    {t("retry")}
+                  </Button>
+                }
+              >
+                {topicsError}
+              </Alert>
+            ) : !run ? (
+              <ListSkeleton rows={5} className="h-20" />
+            ) : run.topics.length === 0 ? (
+              <EmptyState compact icon={<ListTree />} title={t("noTopicsYet")}>
+                {isAdmin ? t("topics.noTopicsAdminHint") : undefined}
+              </EmptyState>
+            ) : visibleTopics.length === 0 ? (
+              <EmptyState
+                compact
+                icon={<ListTree />}
+                title={t("topics.noTopicsForWord")}
+                action={
+                  <Button variant="outline" size="sm" onClick={() => pickWord(word ?? "")}>
+                    {t("topics.removeWordFilter")}
+                  </Button>
+                }
+              >
+                {t("topics.noTopicsForWordHint")}
+              </EmptyState>
+            ) : (
+              <TopicList topics={visibleTopics} selectedId={selected?.id} word={word} onSelect={selectTopic} />
+            )}
+          </Card>
+        </div>
 
         <div className="space-y-6">
           <Card>
