@@ -246,7 +246,7 @@ export default function ReviewPage() {
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 xl:min-h-0">
       <PageHeader title={t("reviewTitle")} description={description} />
 
       {error && (
@@ -305,15 +305,15 @@ export default function ReviewPage() {
             </Alert>
           )}
           {decided === null && !decidedError && (
-            <div className="grid gap-4 xl:grid-cols-[minmax(0,20rem)_minmax(0,1fr)]">
+            <div className="grid gap-4 xl:grid-cols-[minmax(0,24rem)_minmax(0,1fr)]">
               <ReviewListSkeleton />
               <ReviewDetailSkeleton />
             </div>
           )}
           {decided?.length === 0 && <EmptyState icon={<History />} title={t("reviewNothingDecided")} />}
           {selectedDecided && (
-            <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,20rem)_minmax(0,1fr)]">
-              <div className="space-y-4 xl:sticky xl:top-4">
+            <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,24rem)_minmax(0,1fr)] xl:min-h-0 xl:grid-rows-[minmax(0,1fr)] xl:items-stretch">
+              <div className="space-y-4 xl:flex xl:min-h-0 xl:flex-col">
                 <DecidedList
                   items={decidedList}
                   selectedId={selectedDecided.fact.id}
@@ -324,7 +324,7 @@ export default function ReviewPage() {
                   footer={<ShortcutsHint />}
                 />
               </div>
-              <div ref={detailBox} className="min-w-0 scroll-mt-20">
+              <div ref={detailBox} className="scroll-quiet min-w-0 scroll-mt-20 xl:min-h-0 xl:overflow-y-auto">
                 <ReviewDetail
                   ref={detailRef}
                   key={`${selectedDecided.fact.id}-${selectedDecided.decided_at}`}
@@ -339,7 +339,7 @@ export default function ReviewPage() {
       )}
 
       {view === "waiting" && items === null && !error && (
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,20rem)_minmax(0,1fr)]">
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,24rem)_minmax(0,1fr)]">
           <ReviewListSkeleton />
           <ReviewDetailSkeleton />
         </div>
@@ -352,8 +352,8 @@ export default function ReviewPage() {
       )}
 
       {view === "waiting" && items && items.length > 0 && (
-        <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,20rem)_minmax(0,1fr)]">
-          <div className="space-y-4 xl:sticky xl:top-4">
+        <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,24rem)_minmax(0,1fr)] xl:min-h-0 xl:grid-rows-[minmax(0,1fr)] xl:items-stretch">
+          <div className="space-y-4 xl:flex xl:min-h-0 xl:flex-col">
             <ReviewList
               items={visible}
               total={items.length}
@@ -366,7 +366,7 @@ export default function ReviewPage() {
               footer={<ShortcutsHint />}
             />
           </div>
-          <div ref={detailBox} className="min-w-0 scroll-mt-20">
+          <div ref={detailBox} className="scroll-quiet min-w-0 scroll-mt-20 xl:min-h-0 xl:overflow-y-auto">
             {selected ? (
               <ReviewDetail ref={detailRef} key={selected.fact.id} item={selected} onDone={done} />
             ) : (

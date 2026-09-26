@@ -400,7 +400,7 @@ function DocumentsList() {
           ) : (
             <>
               <div className="hidden sm:block">
-                <Table caption={t("docs.caption")}>
+                <Table caption={t("docs.caption")} maxHeight="none">
                   <THead>
                     <TH sort={header("title")}>{t("title")}</TH>
                     <TH sort={header("type")}>{t("type")}</TH>

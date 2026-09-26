@@ -120,7 +120,7 @@ export default function AdminRulesPage() {
 
             <TableFrame>
               <TableToolbar title={t("adminRules.title")} count={rules.length} />
-              <Table caption={t("adminRules.title")}>
+              <Table caption={t("adminRules.title")} maxHeight="none">
                 <THead>
                   <TH>{t("adminRules.colCode")}</TH>
                   <TH>{t("adminRules.colRule")}</TH>

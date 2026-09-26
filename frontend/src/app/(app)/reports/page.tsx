@@ -315,7 +315,7 @@ function ReportsList() {
               ))}
             </ul>
             <div className="hidden sm:block">
-              <Table caption={t("reports")}>
+              <Table caption={t("reports")} maxHeight="none">
                 <THead>
                   <TH sort={header("title")}>{t("title")}</TH>
                   <TH sort={header("type")}>{t("reportType")}</TH>
