@@ -231,24 +231,38 @@
    * frame stacks its content, and an empty state (or a table's rows) takes the spare height.
    * Utilities on an element (grid, block…) still win over these base rules.
    */
+  /* The app is one screen tall and #main is the only thing that scrolls (without a
+     scrollbar). A page whose last block holds a table (.ks-grow) is sized to the screen, so
+     the rows scroll inside the card; any other page keeps its natural height and scrolls. */
   #main > :last-child {
     flex-grow: 1;
-  }
-  #main > :only-child {
     display: flex;
     flex-direction: column;
   }
-  #main > :only-child > :last-child {
+  #main > :last-child > :last-child {
     flex-grow: 1;
+  }
+  #main > :last-child:has(.ks-grow),
+  #main > :last-child > :last-child:has(.ks-grow) {
+    min-height: 0;
+  }
+  /* Blocks above the growing one (headers, filters, stat cards) keep their natural size. */
+  #main > :not(:last-child),
+  #main > :last-child > :not(:last-child) {
+    flex-shrink: 0;
   }
   .ks-card {
     display: flex;
     flex-direction: column;
   }
+  .ks-card:has(.ks-grow) {
+    min-height: 0;
+  }
   .ks-card > .ks-grow,
   .ks-card > .ks-empty,
   .ks-card > :has(> .ks-empty) {
     flex-grow: 1;
+    min-height: 0;
   }
   .ks-card > :has(> .ks-empty) {
     display: flex;
@@ -312,9 +326,37 @@ body {
 /* A list or table that scrolls inside its own box (wheel, trackpad, touch, keyboard) without
    drawing a scrollbar, so long content never stretches the page. */
 @utility scroll-quiet {
+  /* Contains absolutely positioned children (e.g. screen-reader-only labels), which would
+     otherwise escape the box and add empty scroll space to the page. */
+  position: relative;
   scrollbar-width: none;
   -ms-overflow-style: none;
   &::-webkit-scrollbar {
     display: none;
   }
+}
+
+/*
+ * Inside a card, every wrapper between the card and a table's scroll area (.ks-grow) passes
+ * the card's height down, so the rows scroll inside the card instead of being cut off.
+ * Unlayered on purpose: it must beat display utilities such as `sm:block` on those wrappers,
+ * while an element that is `hidden` (e.g. the desktop table on a phone) stays hidden.
+ */
+.ks-card :has(.ks-grow):not(.hidden) {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  min-height: 0;
+}
+@media (min-width: 40rem) {
+  .ks-card .hidden.sm\:block:has(.ks-grow) {
+    display: flex;
+    flex-direction: column;
+    flex-grow: 1;
+    min-height: 0;
+  }
+}
+.ks-card .ks-grow {
+  flex-grow: 1;
+  min-height: 0;
 }
