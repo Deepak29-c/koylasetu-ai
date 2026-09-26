@@ -103,7 +103,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const current = activeHref(pathname);
 
   return (
-    <div className="flex min-h-dvh flex-1">
+    <div className="relative flex h-dvh w-full flex-none overflow-hidden">
       <a
         href="#main"
         className="sr-only z-[80] rounded-full bg-surface px-4 py-2 font-semibold text-brand shadow-pop focus:not-sr-only focus:fixed focus:top-3 focus:left-3"
@@ -138,9 +138,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </MobileMenu>
       )}
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <TopBar me={me} onOpenMenu={() => setMobileOpen(true)} />
-        <main id="main" tabIndex={-1} className="flex w-full max-w-[1680px] flex-1 flex-col px-4 py-6 focus:outline-none sm:px-6 lg:px-8 lg:py-7">
+        <main id="main" tabIndex={-1} className="scroll-quiet relative flex min-h-0 w-full max-w-[1680px] flex-1 flex-col overflow-y-auto px-4 py-6 focus:outline-none sm:px-6 lg:px-8 lg:py-7">
           {error && (
             <Alert
               tone="danger"

@@ -247,7 +247,7 @@ export default function AuditLogPage() {
         ) : (
           <div aria-busy={refreshing || undefined} className={refreshing ? "opacity-60 transition-opacity" : undefined}>
             <div className="hidden sm:block">
-              <Table caption={t("auditLog")}>
+              <Table caption={t("auditLog")} maxHeight="none">
                 <THead>
                   <TH>{t("auditWhen")}</TH>
                   <TH>{t("auditWho")}</TH>

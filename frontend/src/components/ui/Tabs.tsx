@@ -39,7 +39,7 @@ export default function Tabs<V extends string>({
       aria-label={label}
       // On a phone the tabs wrap onto a second line rather than hiding off the edge.
       className={cn(
-        "inline-flex max-w-full flex-wrap gap-1 rounded-card bg-surface-sunken p-1 sm:flex-nowrap sm:overflow-x-auto sm:rounded-full",
+        "inline-flex max-w-full flex-wrap gap-1 rounded-card bg-surface-sunken p-1 scroll-quiet sm:flex-nowrap sm:overflow-x-auto sm:rounded-full",
         className,
       )}
     >

@@ -338,7 +338,7 @@ export default function AdminUsersPage() {
           ) : (
             <>
               <div className="hidden sm:block">
-                <Table caption={t("users.listTitle")}>
+                <Table caption={t("users.listTitle")} maxHeight="none">
                   <THead>
                     <TH sort={header("name")}>{t("name")}</TH>
                     <TH>{t("roles")}</TH>
