@@ -161,6 +161,10 @@ def extract_filters(question: str) -> Filters:
     f.subsidiaries = _find_subsidiaries(q)
     f.states = _find_states(q)
     f.breakdown = bool(_BREAKDOWN.search(q))
+    if (f.states or f.breakdown) and ALL_INDIA in f.subsidiaries:
+        # "measured resources of Odisha ... of the country" or "state-wise ... of the
+        # country": the named states / the breakdown are asked for, not the India total
+        f.subsidiaries.remove(ALL_INDIA)
     if m := _CATEGORY.search(q):
         word = m.group(1).lower()
         f.category = "Measured" if word in ("proved", "proven") else word.capitalize()
